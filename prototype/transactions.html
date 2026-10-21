@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>流水 - BalanceWise</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<script src="assets/data.js"></script>
+<script src="assets/app.js"></script>
+<script>
+renderLayout("transactions", "流水");
+
+document.getElementById("page").innerHTML = `
+  <div class="card">
+    <div class="filter-bar">
+      <select class="input"><option>本月</option><option>上月</option><option>今年</option><option>自定义区间</option></select>
+      <select class="input"><option>全部类型</option><option>支出</option><option>收入</option><option>转账</option></select>
+      <select class="input"><option>全部账户</option>${ACCOUNTS.map(a => `<option>${a.name}</option>`).join("")}</select>
+      <select class="input"><option>全部分类</option>${CATEGORIES.filter(c=>c.kind==="expense").map(c => `<option>${c.name}</option>`).join("")}</select>
+      <input class="input" placeholder="搜索备注关键字" style="min-width:180px">
+      <button class="btn btn-primary btn-sm" onclick="toast('原型演示：筛选条件不改变列表')">筛选</button>
+      <a class="btn btn-sm" href="record.html">＋ 记一笔</a>
+    </div>
+
+    <table class="tbl">
+      <thead><tr><th>类型</th><th>分类</th><th>账户</th><th>金额</th><th>时间</th><th>来源</th><th>备注 / 对方</th><th>操作</th></tr></thead>
+      <tbody>
+        ${TRANSACTIONS.map(t => `
+        <tr>
+          <td>${typeTag(t.type)}</td>
+          <td>${t.category || '<span class="tag gray">未分类</span>'}</td>
+          <td>${t.type === "transfer" ? `${t.from} → ${t.to}` : t.account}</td>
+          <td class="money ${t.type === "income" ? "income" : t.type === "expense" ? "expense" : ""}">
+            ${t.type === "income" ? "+" : t.type === "expense" ? "-" : ""}${fmt(t.amount)}</td>
+          <td class="muted">${t.date}</td>
+          <td>${t.source === "manual" ? "手工" : t.source === "alipay" ? '<span class="tag">支付宝</span>' : '<span class="tag green">微信</span>'}</td>
+          <td>${t.item || ""}${t.counterparty ? `<div class="muted">对方：${t.counterparty}</div>` : ""}</td>
+          <td>
+            <button class="btn btn-sm" onclick="toast('原型演示：编辑弹窗（同记一笔表单）')">编辑</button>
+            <button class="btn btn-sm btn-danger" onclick="toast('原型演示：删除需确认，删除后自动冲销余额')">删除</button>
+          </td>
+        </tr>`).join("")}
+      </tbody>
+    </table>
+
+    <div class="flex-between mt16">
+      <span class="muted">共 ${TRANSACTIONS.length} 条</span>
+      <div>
+        <button class="btn btn-sm" disabled>‹ 上一页</button>
+        <button class="btn btn-sm btn-primary">1</button>
+        <button class="btn btn-sm">2</button>
+        <button class="btn btn-sm">下一页 ›</button>
+      </div>
+    </div>
+  </div>`;
+</script>
+</body>
+</html>

@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>首页仪表盘 - BalanceWise</title>
+<link rel="stylesheet" href="assets/style.css">
+<script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+</head>
+<body>
+<script src="assets/data.js"></script>
+<script src="assets/app.js"></script>
+<script>
+renderLayout("index", "首页仪表盘");
+
+document.getElementById("page").innerHTML = `
+  <div class="grid grid-4 mb16">
+    <div class="card stat-card">
+      <span class="label">净资产</span>
+      <span class="value money">${fmt(netWorth())}</span>
+      <span class="sub">共 ${ACCOUNTS.length} 个账户（资产 ${ACCOUNTS.filter(a=>a.type==="asset").length} / 负债 ${ACCOUNTS.filter(a=>a.type==="liability").length}）</span>
+    </div>
+    <div class="card stat-card">
+      <span class="label">本月收入</span>
+      <span class="value money income">+${fmt(12878.20)}</span>
+      <span class="sub">较上月 +0.0%</span>
+    </div>
+    <div class="card stat-card">
+      <span class="label">本月支出</span>
+      <span class="value money expense">-${fmt(6512.35)}</span>
+      <span class="sub">较上月 -27.4%</span>
+    </div>
+    <div class="card stat-card">
+      <span class="label">本月结余</span>
+      <span class="value" style="color:var(--primary)">${fmt(6365.85)}</span>
+      <span class="sub">结余率 49.4%</span>
+    </div>
+  </div>
+
+  <div class="grid grid-2">
+    <div class="card">
+      <h3>近 6 个月收支趋势 <a href="stats.html" class="muted">查看全部 ›</a></h3>
+      <div id="trendChart" class="chart-box"></div>
+    </div>
+    <div class="card">
+      <h3>本月支出分类构成</h3>
+      <div id="pieChart" class="chart-box"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>最近流水 <a href="transactions.html" class="muted">查看全部 ›</a></h3>
+    <table class="tbl">
+      <thead><tr><th>类型</th><th>分类</th><th>账户</th><th>金额</th><th>时间</th><th>备注</th></tr></thead>
+      <tbody>
+        ${TRANSACTIONS.slice(0, 8).map(t => `
+        <tr>
+          <td>${typeTag(t.type)}</td>
+          <td>${t.category || "—"}</td>
+          <td>${t.type === "transfer" ? `${t.from} → ${t.to}` : t.account}</td>
+          <td class="money ${t.type === "income" ? "income" : t.type === "expense" ? "expense" : ""}">
+            ${t.type === "income" ? "+" : t.type === "expense" ? "-" : ""}${fmt(t.amount)}</td>
+          <td class="muted">${t.date}</td>
+          <td>${t.item || ""}</td>
+        </tr>`).join("")}
+      </tbody>
+    </table>
+  </div>`;
+
+function mkChart(id, opt) {
+  const el = document.getElementById(id);
+  if (typeof echarts === "undefined") {
+    el.innerHTML = '<div class="muted" style="text-align:center;padding-top:110px">📊 图表需联网加载 ECharts CDN</div>';
+    return { setOption() {}, resize() {} };
+  }
+  const c = echarts.init(el);
+  c.setOption(opt);
+  return c;
+}
+
+const trend = mkChart("trendChart", {
+  tooltip: { trigger: "axis" },
+  legend: { data: ["收入", "支出", "结余"], bottom: 0 },
+  grid: { left: 60, right: 20, top: 30, bottom: 40 },
+  xAxis: { type: "category", data: TREND.map(t => t.month.slice(5) + "月") },
+  yAxis: { type: "value", axisLabel: { formatter: v => v >= 10000 ? (v / 10000) + "w" : v } },
+  series: [
+    { name: "收入", type: "line", smooth: true, data: TREND.map(t => t.income), itemStyle: { color: "#3aa97a" }, areaStyle: { opacity: .08 } },
+    { name: "支出", type: "line", smooth: true, data: TREND.map(t => t.expense), itemStyle: { color: "#e8604c" }, areaStyle: { opacity: .08 } },
+    { name: "结余", type: "line", smooth: true, data: TREND.map(t => t.income - t.expense), itemStyle: { color: "#4e63f2" }, lineStyle: { type: "dashed" } },
+  ]
+});
+
+const pie = mkChart("pieChart", {
+  tooltip: { trigger: "item", formatter: "{b}: ¥{c}（{d}%）" },
+  legend: { orient: "vertical", right: 0, top: "center", textStyle: { fontSize: 12 } },
+  series: [{
+    type: "pie", radius: ["45%", "70%"], center: ["38%", "50%"],
+    itemStyle: { borderRadius: 6, borderColor: "#fff", borderWidth: 2 },
+    label: { show: false },
+    data: EXPENSE_DIST,
+    color: ["#4e63f2", "#7b5cf0", "#3aa97a", "#e8b64c", "#e8604c", "#4cb8e8", "#8a90a3", "#c9cede"],
+  }]
+});
+
+window.addEventListener("resize", () => { trend.resize(); pie.resize(); });
+</script>
+</body>
+</html>

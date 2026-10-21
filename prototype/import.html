@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>账单导入 - BalanceWise</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<script src="assets/data.js"></script>
+<script src="assets/app.js"></script>
+<script>
+renderLayout("import", "账单导入");
+
+document.getElementById("page").innerHTML = `
+  <div class="card">
+    <div class="steps" id="stepsBar">
+      <div class="step active" data-n="1">上传账单</div>
+      <div class="step" data-n="2">预览确认</div>
+      <div class="step" data-n="3">完成</div>
+    </div>
+
+    <!-- 第 1 步：上传 -->
+    <div id="step1">
+      <div style="max-width:520px;margin:0 auto;text-align:center;padding:20px 0">
+        <div class="grid grid-2" style="text-align:left">
+          <label class="field"><span>账单平台</span>
+            <select class="input" id="platform"><option value="alipay">支付宝（CSV）</option><option value="wechat">微信（CSV）</option></select>
+          </label>
+          <label class="field"><span>默认入账账户（匹配不到时使用）</span>
+            <select class="input">${ACCOUNTS.filter(a => a.type === "asset").map(a => `<option>${a.name}</option>`).join("")}</select>
+          </label>
+        </div>
+        <div style="border:2px dashed var(--border);border-radius:12px;padding:44px 20px;margin-bottom:18px">
+          <div style="font-size:40px;margin-bottom:10px">📄</div>
+          <p style="margin-bottom:6px;font-weight:600">选择或拖入账单 CSV 文件</p>
+          <p class="muted" style="margin-bottom:16px">支持从支付宝 / 微信官方导出的账单文件，≤ 10 MB</p>
+          <label class="btn btn-primary" style="cursor:pointer">
+            选择文件
+            <input type="file" accept=".csv" style="display:none" onchange="fileChosen(this)">
+          </label>
+          <div id="fileName" class="muted mt16"></div>
+        </div>
+        <button class="btn btn-primary" style="min-width:200px" onclick="parseFile()">解析账单</button>
+      </div>
+    </div>
+
+    <!-- 第 2 步：预览 -->
+    <div id="step2" style="display:none">
+      <div class="flex-between mb16">
+        <div class="muted">共解析 <b>6</b> 条，重复 <b>1</b> 条（默认不勾选），异常 <b>0</b> 条；分类与入账账户可直接在下表中修改</div>
+        <div>
+          <button class="btn btn-sm" onclick="backToStep1()">‹ 重新上传</button>
+          <button class="btn btn-primary btn-sm" onclick="confirmImport()">✓ 入账勾选记录（5 条）</button>
+        </div>
+      </div>
+      <table class="tbl">
+        <thead><tr><th><input type="checkbox" checked onclick="toggleAll(this)"></th><th>时间</th><th>类型</th><th>金额</th><th>交易对方</th><th>分类</th><th>入账账户</th><th>状态</th></tr></thead>
+        <tbody id="previewBody"></tbody>
+      </table>
+    </div>
+
+    <!-- 第 3 步：完成 -->
+    <div id="step3" style="display:none;text-align:center;padding:40px 0">
+      <div style="font-size:48px;margin-bottom:14px">🎉</div>
+      <h3 style="justify-content:center;font-size:18px">导入完成</h3>
+      <p class="muted" style="margin-bottom:24px">批次 #4 已入账：5 条流水，合计 ¥1,246.65；相关账户余额已同步更新</p>
+      <div>
+        <button class="btn" onclick="location.reload()">再导一笔</button>
+        <a class="btn btn-primary" href="transactions.html">查看流水</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- 批次管理 -->
+  <div class="card">
+    <h3>导入批次 <span class="muted" style="font-weight:400;font-size:12px">支持整批撤销，撤销后余额自动回滚，文件可重新导入</span></h3>
+    <table class="tbl">
+      <thead><tr><th>批次</th><th>平台</th><th>文件名</th><th>笔数</th><th>金额合计</th><th>状态</th><th>导入时间</th><th>操作</th></tr></thead>
+      <tbody>
+        ${BATCHES.map(b => `
+        <tr>
+          <td>#${b.id}</td>
+          <td>${b.platform === "alipay" ? '<span class="tag">支付宝</span>' : '<span class="tag green">微信</span>'}</td>
+          <td>${b.fileName}</td>
+          <td>${b.count}</td>
+          <td class="money">${fmt(b.amount)}</td>
+          <td>${b.status === "confirmed" ? '<span class="tag green">已入账</span>' : '<span class="tag orange">已撤销</span>'}</td>
+          <td class="muted">${b.date}</td>
+          <td>
+            <button class="btn btn-sm" onclick="toast('原型演示：批次明细页')">明细</button>
+            ${b.status === "confirmed" ? `<button class="btn btn-sm btn-danger" onclick="toast('原型演示：撤销需二次确认，撤销后余额自动回滚')">撤销</button>` : ""}
+          </td>
+        </tr>`).join("")}
+      </tbody>
+    </table>
+  </div>`;
+
+function fileChosen(input) {
+  document.getElementById("fileName").textContent = input.files[0] ? "已选择：" + input.files[0].name : "";
+}
+
+function renderPreview() {
+  document.getElementById("previewBody").innerHTML = IMPORT_PREVIEW.map((r, i) => `
+    <tr>
+      <td><input type="checkbox" class="row-check" ${r.dup ? "" : "checked"} ${r.dup ? "disabled" : ""}></td>
+      <td class="muted">${r.date}</td>
+      <td>${typeTag(r.type)}</td>
+      <td class="money ${r.type === "income" ? "income" : r.type === "expense" ? "expense" : ""}">${fmt(r.amount)}</td>
+      <td>${r.counterparty}</td>
+      <td><select class="input" style="min-width:130px;padding:4px 8px">${r.type === "transfer" ? "<option>（转账不分类）</option>" : `<option>${r.cat || "未分类"}</option><option>餐饮·三餐</option><option>购物·日用百货</option><option>交通·公交地铁</option>`}</select></td>
+      <td><select class="input" style="min-width:120px;padding:4px 8px">${r.account ? `<option>${r.account}</option>` : `<option value="">待指定</option>`}${ACCOUNTS.filter(a => a.name !== r.account).map(a => `<option>${a.name}</option>`).join("")}</select></td>
+      <td>${r.dup ? '<span class="tag orange">重复</span>' : '<span class="tag green">正常</span>'}</td>
+    </tr>`).join("");
+}
+
+function parseFile() {
+  setStep(2);
+  renderPreview();
+}
+
+function backToStep1() { setStep(1); }
+
+function confirmImport() {
+  const n = document.querySelectorAll(".row-check:checked").length;
+  if (n === 0) { toast("请至少勾选一条记录"); return; }
+  setStep(3);
+}
+
+function setStep(n) {
+  document.getElementById("step1").style.display = n === 1 ? "" : "none";
+  document.getElementById("step2").style.display = n === 2 ? "" : "none";
+  document.getElementById("step3").style.display = n === 3 ? "" : "none";
+  document.querySelectorAll("#stepsBar .step").forEach((s, i) => {
+    s.className = "step" + (i + 1 === n ? " active" : i + 1 < n ? " done" : "");
+  });
+  window.scrollTo(0, 0);
+}
+
+function toggleAll(cb) {
+  document.querySelectorAll(".row-check:not(:disabled)").forEach(c => c.checked = cb.checked);
+}
+</script>
+</body>
+</html>

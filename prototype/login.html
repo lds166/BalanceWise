@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>登录 - BalanceWise</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<div class="auth-wrap">
+  <div class="auth-card">
+    <div class="brand">
+      <div class="mark">账</div>
+      <h2>BalanceWise 个人账务管理</h2>
+      <p>多账户统一管理 · 账单导入自动记账 · 财务统计可视化</p>
+    </div>
+    <form onsubmit="return doLogin(event)">
+      <label class="field"><span>用户名</span>
+        <input class="input" id="username" placeholder="请输入用户名" required>
+      </label>
+      <label class="field"><span>密码</span>
+        <input class="input" id="password" type="password" placeholder="请输入密码" required>
+      </label>
+      <button type="submit" class="btn btn-primary">登 录</button>
+    </form>
+    <div class="auth-links">还没有账号？<a href="register.html">立即注册</a></div>
+  </div>
+</div>
+<div id="toast"></div>
+<script src="assets/data.js"></script>
+<script src="assets/app.js"></script>
+<script>
+function doLogin(e) {
+  e.preventDefault();
+  toast("登录成功，正在进入系统…");
+  setTimeout(() => location.href = "index.html", 500);
+  return false;
+}
+</script>
+</body>
+</html>

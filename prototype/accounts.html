@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>账户管理 - BalanceWise</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<script src="assets/data.js"></script>
+<script src="assets/app.js"></script>
+<script>
+renderLayout("accounts", "账户管理");
+
+document.getElementById("page").innerHTML = `
+  <div class="grid grid-3 mb16">
+    <div class="card stat-card"><span class="label">净资产</span><span class="value money">${fmt(netWorth())}</span></div>
+    <div class="card stat-card"><span class="label">资产合计</span>
+      <span class="value money income">${fmt(ACCOUNTS.filter(a => a.type === "asset").reduce((s, a) => s + a.balance, 0))}</span></div>
+    <div class="card stat-card"><span class="label">负债合计（欠款）</span>
+      <span class="value money expense">${fmt(-ACCOUNTS.filter(a => a.type === "liability").reduce((s, a) => s + a.balance, 0))}</span></div>
+  </div>
+
+  <div class="card">
+    <h3>资产账户 <button class="btn btn-primary btn-sm" onclick="toast('原型演示：新建账户表单（名称 / 子类型 / 初始余额 / 备注）')">＋ 新建账户</button></h3>
+    <div id="assetList"></div>
+  </div>
+
+  <div class="card">
+    <h3>负债账户</h3>
+    <div id="liabList"></div>
+  </div>
+
+  <div class="card">
+    <h3 class="muted" style="font-weight:400">💡 页面说明</h3>
+    <ul class="muted" style="line-height:2">
+      <li>· 删除账户：仅无交易的账户可删除，有交易的账户只能归档（保证流水可追溯）</li>
+      <li>· 归档后账户不再出现在记账下拉框，历史流水与统计仍可见</li>
+      <li>· 修改初始余额时，差额自动计入当前余额（余额校正）</li>
+      <li>· 负债账户以负数存储欠款，界面以正数展示</li>
+    </ul>
+  </div>`;
+
+function accItem(a) {
+  const disp = a.type === "liability" ? -a.balance : a.balance;
+  return `
+  <div class="acc-item">
+    <div>
+      <div class="name">${a.name}</div>
+      <div class="sub">${SUB_TYPE_NAMES[a.subType]}${a.archived ? " · 已归档" : ""}</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:14px">
+      <span class="money ${a.type === "liability" ? "expense" : ""}">${fmt(disp)}</span>
+      <div class="ops">
+        <button class="btn btn-sm" onclick="toast('原型演示：编辑账户表单')">编辑</button>
+        <button class="btn btn-sm" onclick="toast('原型演示：归档后从记账下拉框隐藏')">归档</button>
+        <button class="btn btn-sm btn-danger" onclick="toast('原型演示：有交易的账户禁止删除')">删除</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+document.getElementById("assetList").innerHTML = ACCOUNTS.filter(a => a.type === "asset").map(accItem).join("");
+document.getElementById("liabList").innerHTML = ACCOUNTS.filter(a => a.type === "liability").map(accItem).join("");
+</script>
+</body>
+</html>

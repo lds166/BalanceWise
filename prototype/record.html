@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>记一笔 - BalanceWise</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<script src="assets/data.js"></script>
+<script src="assets/app.js"></script>
+<script>
+renderLayout("record", "记一笔");
+
+const accOptions = selected => ACCOUNTS.filter(a => !a.archived)
+  .map(a => `<option ${a.name === selected ? "selected" : ""}>${a.name}</option>`).join("");
+
+const catOptions = kind => {
+  const groups = CATEGORIES.filter(c => c.kind === kind);
+  let html = `<option value="">未分类</option>`;
+  groups.forEach(g => {
+    if (g.children.length === 0) html += `<option>${g.name}</option>`;
+    g.children.forEach(ch => html += `<option>${g.name}·${ch}</option>`);
+  });
+  return html;
+};
+
+document.getElementById("page").innerHTML = `
+  <div class="card" style="max-width:560px">
+    <div class="filter-bar" style="margin-bottom:20px">
+      <button class="btn btn-primary btn-sm" id="tabExpense">✏️ 支出</button>
+      <button class="btn btn-sm" id="tabIncome">💰 收入</button>
+      <button class="btn btn-sm" id="tabTransfer">🔁 转账</button>
+    </div>
+    <form onsubmit="return saveRecord(event)">
+      <div id="singleAcc">
+        <label class="field"><span>账户</span><select class="input" id="account">${accOptions()}</select></label>
+      </div>
+      <div id="transferAcc" style="display:none">
+        <div class="grid grid-2">
+          <label class="field"><span>转出账户</span><select class="input" id="fromAcc">${accOptions()}</select></label>
+          <label class="field"><span>转入账户</span><select class="input" id="toAcc">${accOptions("余额宝")}</select></label>
+        </div>
+      </div>
+      <label class="field"><span>金额</span><input class="input" id="amount" type="number" min="0.01" step="0.01" placeholder="0.00" required></label>
+      <label class="field" id="catField"><span>分类</span><select class="input" id="category">${catOptions("expense")}</select></label>
+      <div class="grid grid-2">
+        <label class="field"><span>日期时间</span><input class="input" type="datetime-local" value="2026-10-21T21:30"></label>
+        <label class="field"><span>备注</span><input class="input" placeholder="选填，如：美团外卖午餐"></label>
+      </div>
+      <button type="submit" class="btn btn-primary" style="width:100%">保 存</button>
+    </form>
+  </div>`;
+
+let mode = "expense";
+function setMode(m) {
+  mode = m;
+  document.getElementById("tabExpense").className = "btn btn-sm" + (m === "expense" ? " btn-primary" : "");
+  document.getElementById("tabIncome").className = "btn btn-sm" + (m === "income" ? " btn-primary" : "");
+  document.getElementById("tabTransfer").className = "btn btn-sm" + (m === "transfer" ? " btn-primary" : "");
+  document.getElementById("singleAcc").style.display = m === "transfer" ? "none" : "";
+  document.getElementById("transferAcc").style.display = m === "transfer" ? "" : "none";
+  document.getElementById("catField").style.display = m === "transfer" ? "none" : "";
+  document.getElementById("category").innerHTML = catOptions(m === "income" ? "income" : "expense");
+}
+document.getElementById("tabExpense").onclick = () => setMode("expense");
+document.getElementById("tabIncome").onclick = () => setMode("income");
+document.getElementById("tabTransfer").onclick = () => setMode("transfer");
+
+function saveRecord(e) {
+  e.preventDefault();
+  if (mode === "transfer" &&
+      document.getElementById("fromAcc").value === document.getElementById("toAcc").value) {
+    toast("转出与转入账户不能相同");
+    return false;
+  }
+  toast("已保存（原型演示，未真实写入）");
+  return false;
+}
+</script>
+</body>
+</html>

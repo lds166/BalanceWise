@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>分类管理 - BalanceWise</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<script src="assets/data.js"></script>
+<script src="assets/app.js"></script>
+<script>
+renderLayout("categories", "分类管理");
+
+function catGroup(g, kindLabel) {
+  return `
+  <div class="cat-group">
+    <div class="cat-parent" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'':'none'">
+      <span>${g.name} <span class="tag gray" style="margin-left:6px">系统预置</span></span>
+      <span>
+        <button class="btn btn-sm" onclick="event.stopPropagation();toast('原型演示：新增二级分类')">＋ 子类</button>
+        <button class="btn btn-sm" onclick="event.stopPropagation();toast('原型演示：预置分类可改名')">改名</button>
+      </span>
+    </div>
+    <ul class="cat-children">
+      ${g.children.length ? g.children.map(c => `<li><span>${c}</span><span class="muted">编辑 · 删除</span></li>`).join("") : '<li><span class="muted">（无子分类）</span></li>'}
+    </ul>
+  </div>`;
+}
+
+document.getElementById("page").innerHTML = `
+  <div class="grid grid-2">
+    <div class="card">
+      <h3>支出分类
+        <button class="btn btn-primary btn-sm" onclick="toast('原型演示：新增一级分类')">＋ 一级分类</button>
+      </h3>
+      ${CATEGORIES.filter(c => c.kind === "expense").map(g => catGroup(g)).join("")}
+    </div>
+    <div class="card">
+      <h3>收入分类
+        <button class="btn btn-primary btn-sm" onclick="toast('原型演示：新增一级分类')">＋ 一级分类</button>
+      </h3>
+      ${CATEGORIES.filter(c => c.kind === "income").map(g => catGroup(g)).join("")}
+    </div>
+  </div>
+
+  <div class="card">
+    <h3 class="muted" style="font-weight:400">💡 页面说明</h3>
+    <ul class="muted" style="line-height:2">
+      <li>· 注册时系统为您初始化以上预置分类；预置分类可改名、不可删除</li>
+      <li>· 自定义分类可自由增删；被交易引用的分类删除时会被拦截并提示</li>
+      <li>· 记账时不选分类则归入"未分类"，统计中单列一组</li>
+      <li>· 同级分类下名称不允许重复</li>
+    </ul>
+  </div>`;
+</script>
+</body>
+</html>
