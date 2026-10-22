@@ -1,0 +1,72 @@
+CREATE TABLE IF NOT EXISTS `user` (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  username VARCHAR(32) NOT NULL UNIQUE,
+  password_hash VARCHAR(100) NOT NULL,
+  nickname VARCHAR(32) NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS account (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  user_id BIGINT NOT NULL,
+  name VARCHAR(32) NOT NULL,
+  type VARCHAR(16) NOT NULL,
+  sub_type VARCHAR(32) NOT NULL,
+  balance DECIMAL(12,2) NOT NULL DEFAULT 0,
+  initial_balance DECIMAL(12,2) NOT NULL DEFAULT 0,
+  remark VARCHAR(255) NULL,
+  is_archived TINYINT(1) NOT NULL DEFAULT 0,
+  sort_order INT NOT NULL DEFAULT 0,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX idx_account_user ON account(user_id);
+
+CREATE TABLE IF NOT EXISTS category (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  user_id BIGINT NOT NULL,
+  parent_id BIGINT NULL,
+  name VARCHAR(32) NOT NULL,
+  kind VARCHAR(8) NOT NULL,
+  is_system TINYINT(1) NOT NULL DEFAULT 0,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX idx_category_user ON category(user_id);
+
+CREATE TABLE IF NOT EXISTS transaction_record (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  user_id BIGINT NOT NULL,
+  type VARCHAR(8) NOT NULL,
+  from_account_id BIGINT NULL,
+  to_account_id BIGINT NULL,
+  amount DECIMAL(12,2) NOT NULL,
+  category_id BIGINT NULL,
+  occurred_at DATETIME NOT NULL,
+  counterparty VARCHAR(128) NULL,
+  item VARCHAR(255) NULL,
+  source VARCHAR(10) NOT NULL,
+  external_id VARCHAR(64) NULL,
+  import_batch_id BIGINT NULL,
+  is_deleted TINYINT(1) NOT NULL DEFAULT 0,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX idx_txn_user_time ON transaction_record(user_id, occurred_at);
+CREATE INDEX idx_txn_user_src_ext ON transaction_record(user_id, source, external_id);
+
+CREATE TABLE IF NOT EXISTS import_batch (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  user_id BIGINT NOT NULL,
+  platform VARCHAR(8) NOT NULL,
+  file_name VARCHAR(255) NOT NULL,
+  record_count INT NOT NULL,
+  total_amount DECIMAL(14,2) NOT NULL,
+  status VARCHAR(12) NOT NULL,
+  imported_at DATETIME NULL,
+  rolled_back_at DATETIME NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX idx_batch_user ON import_batch(user_id);
