@@ -19,3 +19,9 @@ application-local.properties
 # 系统文件
 Thumbs.db
 .DS_Store
+
+# 本地工具链（免安装 Maven/MySQL）
+.tools/
+
+# 本地运行日志
+logs/
