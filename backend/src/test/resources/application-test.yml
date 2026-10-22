@@ -8,6 +8,9 @@ spring:
     init:
       mode: always
       schema-locations: classpath:schema.sql
+      # H2 内存库在多个缓存的测试 Context 间共享；第二个 Context 重跑 schema.sql 时
+      # CREATE INDEX（无 IF NOT EXISTS）会报错，此处忽略以复用已存在的表结构
+      continue-on-error: true
 jwt:
   secret: balancewise-dev-secret-key-please-change-in-production-0123456789abcdef
   expire-hours: 72
