@@ -81,6 +81,9 @@ public class AccountService extends ServiceImpl<AccountMapper, Account> {
     public Account update(Long userId, Long accountId, AccountRequest req) {
         Account a = owned(userId, accountId);
         validateSubType(req.getType(), req.getSubType());
+        if (!a.getType().equals(req.getType())) {
+            throw new BizException("账户类别不可修改");
+        }
         a.setName(req.getName());
         a.setType(req.getType());
         a.setSubType(req.getSubType());

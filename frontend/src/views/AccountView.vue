@@ -38,7 +38,7 @@
           <el-input v-model="dialog.name" maxlength="32" placeholder="如：招商储蓄卡" />
         </el-form-item>
         <el-form-item label="类别">
-          <el-radio-group v-model="dialog.type">
+          <el-radio-group v-model="dialog.type" :disabled="!!dialog.id">
             <el-radio value="asset">资产</el-radio>
             <el-radio value="liability">负债</el-radio>
           </el-radio-group>
