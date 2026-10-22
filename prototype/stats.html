@@ -38,6 +38,11 @@ document.getElementById("page").innerHTML = `
     <div id="trendChart" class="chart-box"></div>
   </div>
 
+  <div class="card">
+    <h3>净资产趋势</h3>
+    <div id="nwChart" class="chart-box"></div>
+  </div>
+
   <div class="grid grid-2">
     <div class="card">
       <h3>分类构成
@@ -126,6 +131,26 @@ mk("accChart", {
       color: p => p.value >= 0 ? "#4e63f2" : "#e8604c",
     },
     barMaxWidth: 18,
+  }]
+});
+
+/* 净资产趋势（模拟数据） */
+const NET_WORTH_TREND = [
+  { month: "2026-05", value: 30200 }, { month: "2026-06", value: 28900 },
+  { month: "2026-07", value: 33100 }, { month: "2026-08", value: 30400 },
+  { month: "2026-09", value: 33000 }, { month: "2026-10", value: 39417 },
+];
+mk("nwChart", {
+  tooltip: { trigger: "axis", formatter: p => `${p[0].name}<br/>净资产：¥${Number(p[0].value).toLocaleString()}` },
+  grid: { left: 70, right: 20, top: 30, bottom: 40 },
+  xAxis: { type: "category", data: NET_WORTH_TREND.map(t => t.month.slice(5) + "月") },
+  yAxis: { type: "value", axisLabel: { formatter: v => (v / 10000) + "w" } },
+  series: [{
+    name: "净资产", type: "line", smooth: true,
+    data: NET_WORTH_TREND.map(t => t.value),
+    itemStyle: { color: "#7b5cf0" },
+    areaStyle: { opacity: .1 },
+    symbolSize: 8,
   }]
 });
 
