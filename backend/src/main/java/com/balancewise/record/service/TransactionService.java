@@ -302,7 +302,7 @@ public class TransactionService extends ServiceImpl<TransactionRecordMapper, Tra
 
         java.time.format.DateTimeFormatter fmt =
                 java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
-        StringBuilder sb = new StringBuilder("﻿");
+        StringBuilder sb = new StringBuilder("\uFEFF");
         sb.append("类型,分类,账户,金额,时间,对方,备注,来源,批次号\n");
         java.util.List<TransactionVo> vos = enrich(list);
         for (TransactionVo v : vos) {
