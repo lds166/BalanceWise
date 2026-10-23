@@ -336,4 +336,47 @@ class TransactionServiceTest {
         assertTrue(csv.contains("收入"));
         assertFalse(csv.contains("支出"));
     }
+
+    @Test
+    void exportCsvGuardsFormulaInjectionAndCarriageReturn() {
+        Account a = acc("卡A", "asset", "debit_card", "1000.00");
+        TransactionRequest r = req("expense", a.getId(), null, "10.00", null);
+        r.setCounterparty("=cmd|'/c calc'!A1");   // Excel 公式注入样本
+        r.setItem("含\r裸回车");
+        transactionService.create(1L, r);
+
+        String csv = transactionService.exportCsv(1L, new TransactionQuery());
+        // 公式注入：以 ' 前缀中和
+        assertTrue(csv.contains("'=cmd"));
+        // 裸 \r 触发引号包裹
+        assertTrue(csv.contains("\"含\r裸回车\""));
+    }
+
+    @Test
+    void endDateFilterIncludesWholeDayExclusively() {
+        Account a = acc("卡A", "asset", "debit_card", "1000.00");
+        TransactionRequest r1 = req("expense", a.getId(), null, "10.00", null);
+        r1.setOccurredAt(LocalDateTime.of(2026, 10, 31, 23, 59, 59));
+        transactionService.create(1L, r1);
+        TransactionRequest r2 = req("expense", a.getId(), null, "20.00", null);
+        r2.setOccurredAt(LocalDateTime.of(2026, 11, 1, 0, 0, 0));
+        transactionService.create(1L, r2);
+
+        TransactionQuery q = new TransactionQuery();
+        q.setStart(java.time.LocalDate.of(2026, 10, 1));
+        q.setEnd(java.time.LocalDate.of(2026, 10, 31));
+        // 新语义：end 含当天 23:59:59.xxx 全部（< 次日 00:00）
+        assertEquals(1, transactionService.page(1L, q).getTotal());
+    }
+
+    @Test
+    void doubleDeleteRejected() {
+        Account a = acc("卡A", "asset", "debit_card", "1000.00");
+        TransactionRecord r = transactionService.create(1L,
+                req("expense", a.getId(), null, "10.00", null));
+        transactionService.delete(1L, r.getId());
+        BizException e = assertThrows(BizException.class,
+                () -> transactionService.delete(1L, r.getId()));
+        assertEquals("流水不存在", e.getMessage());
+    }
 }

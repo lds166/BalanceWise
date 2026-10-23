@@ -186,9 +186,15 @@ public class TransactionService extends ServiceImpl<TransactionRecordMapper, Tra
     @Transactional
     public void delete(Long userId, Long id) {
         TransactionRecord r = owned(userId, id);
+        // 条件更新抢占：并发双击时第二个请求影响 0 行，直接拒绝，不会双重冲销
+        int updated = getBaseMapper().update(null, new com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<TransactionRecord>()
+                .eq(TransactionRecord::getId, r.getId())
+                .eq(TransactionRecord::getIsDeleted, 0)
+                .set(TransactionRecord::getIsDeleted, 1));
+        if (updated == 0) {
+            throw new BizException("流水不存在或已删除");
+        }
         applyBalance(r.getFromAccountId(), r.getToAccountId(), r.getAmount().negate());
-        r.setIsDeleted(1);
-        updateById(r);
     }
 
     /**
@@ -212,7 +218,8 @@ public class TransactionService extends ServiceImpl<TransactionRecordMapper, Tra
             w.ge(TransactionRecord::getOccurredAt, q.getStart().atStartOfDay());
         }
         if (q.getEnd() != null) {
-            w.le(TransactionRecord::getOccurredAt, q.getEnd().atTime(23, 59, 59));
+            // 排他上界：含 end 当天全部（亚秒缝隙安全）
+            w.lt(TransactionRecord::getOccurredAt, q.getEnd().plusDays(1).atStartOfDay());
         }
         if (q.getKeyword() != null && !q.getKeyword().isBlank()) {
             w.and(x -> x.like(TransactionRecord::getCounterparty, q.getKeyword())
@@ -276,12 +283,15 @@ public class TransactionService extends ServiceImpl<TransactionRecordMapper, Tra
     private static final java.util.Map<String, String> SOURCE_LABEL = java.util.Map.of(
             "manual", "手工", "alipay", "支付宝", "wechat", "微信", "reconcile", "余额校正");
 
-    /** CSV 字段转义：含逗号/引号/换行则加引号并翻倍引号 */
+    /** CSV 字段转义：含逗号/引号/换行则加引号并翻倍引号；以 = + - @ 开头加 ' 前缀防公式注入 */
     private String csv(String s) {
         if (s == null) {
             return "";
         }
-        if (s.contains(",") || s.contains("\"") || s.contains("\n")) {
+        if (s.startsWith("=") || s.startsWith("+") || s.startsWith("-") || s.startsWith("@")) {
+            s = "'" + s;
+        }
+        if (s.contains(",") || s.contains("\"") || s.contains("\n") || s.contains("\r")) {
             return "\"" + s.replace("\"", "\"\"") + "\"";
         }
         return s;
@@ -294,9 +304,9 @@ public class TransactionService extends ServiceImpl<TransactionRecordMapper, Tra
     public String exportCsv(Long userId, TransactionQuery q) {
         var wrapper = buildWrapper(userId, q);
         wrapper.orderByDesc(TransactionRecord::getOccurredAt).orderByDesc(TransactionRecord::getId);
-        wrapper.last("LIMIT 50000");
+        wrapper.last("LIMIT 50001");
         java.util.List<TransactionRecord> list = list(wrapper);
-        if (list.size() >= 50000) {
+        if (list.size() > 50000) {
             throw new BizException("导出数据超过 50000 行，请缩小筛选范围");
         }
 
