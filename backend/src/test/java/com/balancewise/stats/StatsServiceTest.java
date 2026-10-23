@@ -9,6 +9,7 @@ import com.balancewise.account.service.AccountService;
 import com.balancewise.record.dto.TransactionRequest;
 import com.balancewise.record.service.TransactionService;
 import com.balancewise.stats.service.StatsService;
+import com.balancewise.stats.vo.StatsNetWorthVo;
 import com.balancewise.stats.vo.StatsSummaryVo;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -199,5 +200,53 @@ class StatsServiceTest {
         StatsTrendVo vo = statsService.trend(1L, q);
         assertEquals(0, new BigDecimal("100.00").compareTo(vo.getPoints().get(0).getExpense()));
         assertEquals(0, BigDecimal.ZERO.compareTo(vo.getPoints().get(0).getIncome()));
+    }
+
+    @Test
+    void netWorthReconstructsFromInitialAndFlows() {
+        // 储蓄卡 initial 1000（资产）；信用卡 initial 500（负债 → 净初始 = 1000 - 500 = 500）
+        Account card = acc("储蓄卡", "asset", "debit_card", "1000.00");
+        Account credit = acc("信用卡", "liability", "credit_card", "500.00");
+        txn("expense", card.getId(), null, "100.00", LocalDateTime.of(2026, 10, 1, 8, 30));
+        txn("income", null, card.getId(), "700.00", LocalDateTime.of(2026, 10, 2, 9, 0));
+
+        StatsNetWorthVo vo = statsService.netWorth(1L, trendQuery("day", null,
+                LocalDate.of(2026, 10, 1), LocalDate.of(2026, 10, 3)));
+        assertEquals(0, new BigDecimal("500.00").compareTo(vo.getInitialNetWorth()));
+        assertEquals(3, vo.getPoints().size());
+        // T=10-01：500 - 100 = 400；T=10-02：400 + 700 = 1100；T=10-03 无流水 → 持平 1100
+        assertEquals(0, new BigDecimal("400.00").compareTo(vo.getPoints().get(0).getNetWorth()));
+        assertEquals(0, new BigDecimal("1100.00").compareTo(vo.getPoints().get(1).getNetWorth()));
+        assertEquals(0, new BigDecimal("1100.00").compareTo(vo.getPoints().get(2).getNetWorth()));
+    }
+
+    @Test
+    void netWorthIgnoresTransfersAndCountsFromBeginning() {
+        Account a = acc("卡A", "asset", "debit_card", "1000.00");
+        Account b = acc("卡B", "asset", "cash", "0.00");
+        // 区间开始之前的流水必须计入（自时间起点累计）
+        txn("income", null, a.getId(), "500.00", LocalDateTime.of(2026, 9, 1, 8, 30));
+        // 转账双向抵消，不改变净资产
+        txn("transfer", a.getId(), b.getId(), "100.00", LocalDateTime.of(2026, 10, 1, 8, 30));
+
+        StatsNetWorthVo vo = statsService.netWorth(1L, trendQuery("day", null,
+                LocalDate.of(2026, 10, 1), LocalDate.of(2026, 10, 1)));
+        assertEquals(0, new BigDecimal("1000.00").compareTo(vo.getInitialNetWorth()));
+        assertEquals(0, new BigDecimal("1500.00").compareTo(vo.getPoints().get(0).getNetWorth()));
+    }
+
+    @Test
+    void netWorthByMonthBucketsCumulate() {
+        Account a = acc("卡A", "asset", "debit_card", "1000.00");
+        txn("expense", a.getId(), null, "100.00", LocalDateTime.of(2026, 9, 15, 12, 0));
+        txn("expense", a.getId(), null, "50.00", LocalDateTime.of(2026, 10, 2, 12, 0));
+
+        StatsNetWorthVo vo = statsService.netWorth(1L, trendQuery("month", null,
+                LocalDate.of(2026, 9, 1), LocalDate.of(2026, 10, 31)));
+        assertEquals(0, new BigDecimal("1000.00").compareTo(vo.getInitialNetWorth()));
+        assertEquals(2, vo.getPoints().size());
+        assertEquals("2026-09", vo.getPoints().get(0).getLabel());
+        assertEquals(0, new BigDecimal("900.00").compareTo(vo.getPoints().get(0).getNetWorth()));
+        assertEquals(0, new BigDecimal("850.00").compareTo(vo.getPoints().get(1).getNetWorth()));
     }
 }

@@ -1,10 +1,15 @@
 package com.balancewise.stats.service;
 
+import com.balancewise.account.entity.Account;
+import com.balancewise.account.mapper.AccountMapper;
 import com.balancewise.common.BizException;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.balancewise.stats.dto.StatsTrendQuery;
 import com.balancewise.stats.mapper.StatsMapper;
 import com.balancewise.stats.mapper.row.DailyFlowRow;
 import com.balancewise.stats.mapper.row.TypeSumRow;
+import com.balancewise.stats.vo.NetWorthPointVo;
+import com.balancewise.stats.vo.StatsNetWorthVo;
 import com.balancewise.stats.vo.StatsSummaryVo;
 import com.balancewise.stats.vo.StatsTrendVo;
 import com.balancewise.stats.vo.TrendPointVo;
@@ -27,9 +32,11 @@ import java.util.List;
 public class StatsService {
 
     private final StatsMapper statsMapper;
+    private final AccountMapper accountMapper;
 
-    public StatsService(StatsMapper statsMapper) {
+    public StatsService(StatsMapper statsMapper, AccountMapper accountMapper) {
         this.statsMapper = statsMapper;
+        this.accountMapper = accountMapper;
     }
 
     /** 区间汇总（UC-5.2）：start/end 为空 = 全部时间（上界取明天，保证含今天全部）；balance = income - expense */
@@ -157,6 +164,42 @@ public class StatsService {
             return YearMonth.parse(label).atEndOfMonth();
         }
         return LocalDate.parse(label);
+    }
+
+    /**
+     * 净资产趋势（UC-5.4 / 规格 5.4 规则 2、3）：
+     * netWorth(期末) = Σ(asset.initial_balance) − Σ(liability.initial_balance) + Σ(期末前的 收入−支出)。
+     * 含归档账户；转账双向抵消不进累计；区间起点前的流水计入（自时间起点累计，from 传 null）。
+     */
+    public StatsNetWorthVo netWorth(Long userId, StatsTrendQuery q) {
+        Range range = resolveRange(q);
+        List<Account> accounts = accountMapper.selectList(new LambdaQueryWrapper<Account>()
+                .eq(Account::getUserId, userId));
+        BigDecimal base = BigDecimal.ZERO;
+        for (Account a : accounts) {
+            BigDecimal initial = a.getInitialBalance() != null ? a.getInitialBalance() : BigDecimal.ZERO;
+            base = base.add("liability".equals(a.getType()) ? initial.negate() : initial);
+        }
+        List<DailyFlowRow> flows = statsMapper.dailyFlows(userId, null, range.to(), null);
+
+        StatsNetWorthVo vo = new StatsNetWorthVo();
+        vo.setInitialNetWorth(base.setScale(2, RoundingMode.HALF_UP));
+        List<NetWorthPointVo> points = new ArrayList<>();
+        BigDecimal cum = base;
+        int idx = 0; // flows 按 day 升序（SQL ORDER BY day），桶也按时间升序，双指针一遍累计
+        for (String label : bucketLabels(range)) {
+            LocalDate bucketEnd = bucketEndDate(range, label);
+            while (idx < flows.size() && !flows.get(idx).getDay().isAfter(bucketEnd)) {
+                DailyFlowRow f = flows.get(idx++);
+                cum = cum.add("income".equals(f.getType()) ? f.getTotal() : f.getTotal().negate());
+            }
+            NetWorthPointVo p = new NetWorthPointVo();
+            p.setLabel(label);
+            p.setNetWorth(cum.setScale(2, RoundingMode.HALF_UP));
+            points.add(p);
+        }
+        vo.setPoints(points);
+        return vo;
     }
 
     /** 解析后的统计区间：groupBy + 起止（含）+ SQL 边界（from 可空 = 无下界，to 排他） */
