@@ -81,6 +81,14 @@ class ImportMappingTest {
         assertNull(accountMatcher.match(1L, "火星银行", null));
     }
 
+    @Test
+    void transferTypeNeverMapped() {
+        category("餐饮", "expense");
+        // 转账不挂分类：即使文本命中关键词也返回 null
+        assertNull(categoryMappingService.mapCategoryId(1L, "transfer", "余额宝转入", "余额宝"));
+        assertNull(categoryMappingService.mapCategoryId(1L, "transfer", "转账", "十月工资"));
+    }
+
     private AccountRequest reqOf(String name) {
         AccountRequest r = new AccountRequest();
         r.setName(name);

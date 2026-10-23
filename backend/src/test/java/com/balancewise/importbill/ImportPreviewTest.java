@@ -5,6 +5,7 @@ import com.balancewise.account.entity.Account;
 import com.balancewise.account.service.AccountService;
 import com.balancewise.category.entity.Category;
 import com.balancewise.category.mapper.CategoryMapper;
+import com.balancewise.common.BizException;
 import com.balancewise.importbill.service.ImportService;
 import com.balancewise.importbill.dto.ImportPreviewRow;
 import com.balancewise.importbill.vo.ImportPreviewVo;
@@ -119,5 +120,40 @@ class ImportPreviewTest {
                 .filter(r -> "202609050000100005".equals(r.getExternalId()))
                 .findFirst().orElseThrow();
         assertFalse(other.isDuplicate());
+    }
+
+    @Test
+    void unsupportedPlatformRejected() throws Exception {
+        byte[] content = Files.readAllBytes(
+                new ClassPathResource("fixtures/alipay-sample.csv").getFile().toPath());
+        BizException e = assertThrows(BizException.class,
+                () -> importService.preview(1L, "paypal", content, null));
+        assertEquals("不支持的平台：paypal", e.getMessage());
+    }
+
+    @Test
+    void duplicateDetectionIsolatedAcrossUsers() throws Exception {
+        Account def = newAccount("现金");
+        byte[] content = Files.readAllBytes(
+                new ClassPathResource("fixtures/alipay-sample.csv").getFile().toPath());
+        // user 1 已入账该 external_id 的未删除流水
+        com.balancewise.record.entity.TransactionRecord exist = new com.balancewise.record.entity.TransactionRecord();
+        exist.setUserId(1L);
+        exist.setType("expense");
+        exist.setFromAccountId(def.getId());
+        exist.setAmount(new BigDecimal("35.50"));
+        exist.setOccurredAt(java.time.LocalDateTime.of(2026, 9, 1, 8, 30, 22));
+        exist.setSource("alipay");
+        exist.setExternalId("202609010000100001");
+        exist.setIsDeleted(0);
+        transactionRecordMapper.insert(exist);
+        // user 1 预览 → 标重复
+        assertTrue(importService.preview(1L, "alipay", content, def.getId()).getRows().stream()
+                .filter(r -> "202609010000100001".equals(r.getExternalId()))
+                .findFirst().orElseThrow().isDuplicate());
+        // user 2 预览同一文件 → 不重复（userId 严格隔离）
+        assertFalse(importService.preview(2L, "alipay", content, null).getRows().stream()
+                .filter(r -> "202609010000100001".equals(r.getExternalId()))
+                .findFirst().orElseThrow().isDuplicate());
     }
 }

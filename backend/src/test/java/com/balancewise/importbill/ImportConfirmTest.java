@@ -19,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.nio.file.Files;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -117,5 +118,28 @@ class ImportConfirmTest {
         req.setRows(List.of());
         BizException e = assertThrows(BizException.class, () -> importService.confirm(1L, req));
         assertTrue(e.getMessage().contains("至少一条"));
+    }
+
+    @Test
+    void inBatchDuplicateExternalIdRejected() {
+        Account def = newAccount("现金");
+        ImportRowRequest row = new ImportRowRequest();
+        row.setType("expense");
+        row.setFromAccountId(def.getId());
+        row.setAmount(new BigDecimal("10.00"));
+        row.setOccurredAt(LocalDateTime.of(2026, 9, 1, 12, 0));
+        row.setExternalId("EXT-DUP");
+        ImportRowRequest dup = new ImportRowRequest();
+        dup.setType("expense");
+        dup.setFromAccountId(def.getId());
+        dup.setAmount(new BigDecimal("20.00"));
+        dup.setOccurredAt(LocalDateTime.of(2026, 9, 2, 12, 0));
+        dup.setExternalId("EXT-DUP");
+        ImportConfirmRequest req = new ImportConfirmRequest();
+        req.setPlatform("alipay");
+        req.setFileName("dup.csv");
+        req.setRows(java.util.List.of(row, dup));
+        BizException e = assertThrows(BizException.class, () -> importService.confirm(1L, req));
+        assertTrue(e.getMessage().contains("重复"));
     }
 }

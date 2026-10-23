@@ -8,8 +8,7 @@ import org.springframework.stereotype.Service;
 import java.util.List;
 
 /**
- * 分类自动映射（UC-4.4）：内置"平台交易分类 → 本系统分类"规则。
- * 先按平台分类精确表查，再按关键词规则匹配 平台分类+商品 文本；
+ * 分类自动映射（UC-4.4）：内置关键词规则，匹配 平台分类+商品 文本；
  * 只在用户自己的分类中按名称解析；无匹配返回 null（未分类）。
  */
 @Service

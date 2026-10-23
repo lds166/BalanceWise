@@ -115,6 +115,13 @@ public class ImportService {
                 .map(ImportRowRequest::getExternalId)
                 .filter(id -> id != null && !id.isBlank())
                 .collect(Collectors.toList());
+        // 批内互重校验：同一批次中 external_id 不得重复（防止同一文件内重复交易号自我重复入账）
+        Set<String> seenInBatch = new HashSet<>();
+        for (String id : externalIds) {
+            if (!seenInBatch.add(id)) {
+                throw new BizException("批次内存在重复的 external_id：" + id);
+            }
+        }
         long dupCount = existingExternalIds(userId, req.getPlatform(), externalIds).size();
         if (dupCount > 0) {
             throw new BizException("包含 " + dupCount + " 条已入账记录，请重新预览后再确认");

@@ -97,4 +97,29 @@ class ImportBatchTest {
         BizException e2 = assertThrows(BizException.class, () -> importService.rollback(2L, batchId));
         assertEquals("批次不存在", e2.getMessage());
     }
+
+    @Test
+    void reimportAfterRollbackSucceeds() {
+        Long batchId = confirmedBatchWithOneExpense();
+        importService.rollback(1L, batchId);
+
+        // 撤销后流水软删，重复检测不再命中（§5.4 规则 4：只比对未删除记录），同文件可重新入账
+        Account cash = accountService.getOne(new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<Account>()
+                .eq(Account::getUserId, 1L).eq(Account::getName, "现金"));
+        ImportRowRequest row = new ImportRowRequest();
+        row.setType("expense");
+        row.setFromAccountId(cash.getId());
+        row.setAmount(new BigDecimal("100.00"));
+        row.setOccurredAt(LocalDateTime.of(2026, 9, 1, 12, 0));
+        row.setExternalId("EXT-001");
+        ImportConfirmRequest req = new ImportConfirmRequest();
+        req.setPlatform("alipay");
+        req.setFileName("t.csv");
+        req.setRows(List.of(row));
+        ImportBatch again = importService.confirm(1L, req);
+        assertEquals("confirmed", again.getStatus());
+        // 余额再次扣减 100（重导生效）
+        assertEquals(0, new BigDecimal("-100.00").compareTo(
+                accountService.getById(cash.getId()).getBalance()));
+    }
 }

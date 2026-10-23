@@ -24,13 +24,13 @@ public class AccountMatcher {
                     .eq(Account::getUserId, userId)
                     .eq(Account::getName, payMethod)
                     .last("LIMIT 1"));
-            if (hit != null && hit.getIsArchived() == 0) {
+            if (hit != null && Integer.valueOf(0).equals(hit.getIsArchived())) {
                 return hit;
             }
         }
         if (defaultAccountId != null) {
             Account def = accountMapper.selectById(defaultAccountId);
-            if (def != null && def.getUserId().equals(userId) && def.getIsArchived() == 0) {
+            if (def != null && def.getUserId().equals(userId) && Integer.valueOf(0).equals(def.getIsArchived())) {
                 return def;
             }
         }
