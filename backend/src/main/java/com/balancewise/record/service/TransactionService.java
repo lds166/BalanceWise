@@ -51,6 +51,11 @@ public class TransactionService extends ServiceImpl<TransactionRecordMapper, Tra
         }
     }
 
+    /** 反向冲销一条流水（批次撤销用）：from 加回、to 减回。调用方负责软删标记与事务。 */
+    public void reverse(TransactionRecord r) {
+        applyBalance(r.getFromAccountId(), r.getToAccountId(), r.getAmount().negate());
+    }
+
     protected Account usableAccount(Long userId, Long accountId, String label) {
         Account a = accountMapper.selectById(accountId);
         if (a == null || !a.getUserId().equals(userId)) {
@@ -246,7 +251,7 @@ public class TransactionService extends ServiceImpl<TransactionRecordMapper, Tra
     }
 
     /** 批量填充账户名与分类名，避免 N+1 */
-    protected List<TransactionVo> enrich(List<TransactionRecord> list) {
+    public List<TransactionVo> enrich(List<TransactionRecord> list) {
         Set<Long> accIds = new HashSet<>();
         Set<Long> catIds = new HashSet<>();
         for (TransactionRecord r : list) {

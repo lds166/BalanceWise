@@ -11,6 +11,8 @@ import com.balancewise.importbill.mapper.ImportBatchMapper;
 import com.balancewise.importbill.parser.BillParseResult;
 import com.balancewise.importbill.parser.BillParser;
 import com.balancewise.importbill.parser.ParsedRow;
+import com.balancewise.importbill.vo.ImportBatchDetailVo;
+import com.balancewise.importbill.vo.ImportBatchVo;
 import com.balancewise.importbill.vo.ImportPreviewVo;
 import com.balancewise.record.entity.TransactionRecord;
 import com.balancewise.record.mapper.TransactionRecordMapper;
@@ -158,5 +160,79 @@ public class ImportService {
                         .eq(TransactionRecord::getIsDeleted, 0)
                         .in(TransactionRecord::getExternalId, externalIds))
                 .stream().map(TransactionRecord::getExternalId).collect(Collectors.toSet());
+    }
+
+    public List<ImportBatchVo> list(Long userId) {
+        return importBatchMapper.selectList(new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<ImportBatch>()
+                        .eq(ImportBatch::getUserId, userId)
+                        .orderByDesc(ImportBatch::getImportedAt))
+                .stream().map(this::toVo).collect(Collectors.toList());
+    }
+
+    public ImportBatchDetailVo detail(Long userId, Long batchId) {
+        ImportBatch batch = ownedBatch(userId, batchId);
+        ImportBatchDetailVo vo = new ImportBatchDetailVo();
+        vo.setId(batch.getId());
+        vo.setPlatform(batch.getPlatform());
+        vo.setFileName(batch.getFileName());
+        vo.setRecordCount(batch.getRecordCount());
+        vo.setTotalAmount(batch.getTotalAmount());
+        vo.setStatus(batch.getStatus());
+        vo.setImportedAt(batch.getImportedAt());
+        vo.setRolledBackAt(batch.getRolledBackAt());
+        // 明细含已软删流水（可追溯）
+        List<TransactionRecord> records = transactionRecordMapper.selectList(
+                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<TransactionRecord>()
+                        .eq(TransactionRecord::getImportBatchId, batchId)
+                        .orderByDesc(TransactionRecord::getOccurredAt));
+        vo.setRecords(transactionService.enrich(records));
+        return vo;
+    }
+
+    /**
+     * 批次撤销（UC-4.11 / 规格 7.5）：单事务——
+     * 状态机校验（confirmed，幂等：重复撤销拒绝）→ 逐条按当前值反向冲销（编辑过以当前值为准）→ 软删 → 批次置 rolled_back。
+     * 撤销后该文件可重新导入（重复检测只比对未删除记录）。
+     */
+    @Transactional
+    public ImportBatch rollback(Long userId, Long batchId) {
+        ImportBatch batch = ownedBatch(userId, batchId);
+        if (!"confirmed".equals(batch.getStatus())) {
+            throw new BizException("批次已撤销，请勿重复操作");
+        }
+        List<TransactionRecord> records = transactionRecordMapper.selectList(
+                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<TransactionRecord>()
+                        .eq(TransactionRecord::getImportBatchId, batchId)
+                        .eq(TransactionRecord::getIsDeleted, 0));
+        for (TransactionRecord r : records) {
+            transactionService.reverse(r);
+            r.setIsDeleted(1);
+            transactionRecordMapper.updateById(r);
+        }
+        batch.setStatus("rolled_back");
+        batch.setRolledBackAt(java.time.LocalDateTime.now());
+        importBatchMapper.updateById(batch);
+        return batch;
+    }
+
+    private ImportBatch ownedBatch(Long userId, Long batchId) {
+        ImportBatch batch = importBatchMapper.selectById(batchId);
+        if (batch == null || !batch.getUserId().equals(userId)) {
+            throw new BizException("批次不存在");
+        }
+        return batch;
+    }
+
+    private ImportBatchVo toVo(ImportBatch b) {
+        ImportBatchVo vo = new ImportBatchVo();
+        vo.setId(b.getId());
+        vo.setPlatform(b.getPlatform());
+        vo.setFileName(b.getFileName());
+        vo.setRecordCount(b.getRecordCount());
+        vo.setTotalAmount(b.getTotalAmount());
+        vo.setStatus(b.getStatus());
+        vo.setImportedAt(b.getImportedAt());
+        vo.setRolledBackAt(b.getRolledBackAt());
+        return vo;
     }
 }
