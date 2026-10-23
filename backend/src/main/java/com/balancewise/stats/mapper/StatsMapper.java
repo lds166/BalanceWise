@@ -1,5 +1,6 @@
 package com.balancewise.stats.mapper;
 
+import com.balancewise.stats.mapper.row.CategorySumRow;
 import com.balancewise.stats.mapper.row.DailyFlowRow;
 import com.balancewise.stats.mapper.row.TypeSumRow;
 import org.apache.ibatis.annotations.Param;
@@ -43,4 +44,19 @@ public interface StatsMapper {
                                   @Param("from") LocalDateTime from,
                                   @Param("to") LocalDateTime to,
                                   @Param("accountId") Long accountId);
+
+    /** 区间内按分类汇总（单 type）；from 可空；category_id 为 NULL 的行保留（归入未分类） */
+    @Select("<script>" +
+            "SELECT category_id, SUM(amount) AS total FROM transaction_record " +
+            "WHERE user_id = #{userId} AND is_deleted = 0 AND type = #{type} " +
+            "<if test='from != null'>AND occurred_at &gt;= #{from} </if>" +
+            "AND occurred_at &lt; #{to} " +
+            "<if test='accountId != null'>AND (from_account_id = #{accountId} OR to_account_id = #{accountId}) </if>" +
+            "GROUP BY category_id" +
+            "</script>")
+    List<CategorySumRow> sumByCategory(@Param("userId") Long userId,
+                                       @Param("type") String type,
+                                       @Param("from") LocalDateTime from,
+                                       @Param("to") LocalDateTime to,
+                                       @Param("accountId") Long accountId);
 }

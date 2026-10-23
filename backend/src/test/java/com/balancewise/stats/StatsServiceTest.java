@@ -2,7 +2,9 @@ package com.balancewise.stats;
 
 import com.balancewise.account.dto.AccountRequest;
 import com.balancewise.common.BizException;
+import com.balancewise.stats.dto.StatsCategoryQuery;
 import com.balancewise.stats.dto.StatsTrendQuery;
+import com.balancewise.stats.vo.StatsCategoryVo;
 import com.balancewise.stats.vo.StatsTrendVo;
 import com.balancewise.account.entity.Account;
 import com.balancewise.account.service.AccountService;
@@ -36,13 +38,17 @@ class StatsServiceTest {
     private TransactionService transactionService;
 
     private Account acc(String name, String type, String subType, String balance) {
+        return accFor(1L, name, type, subType, balance);
+    }
+
+    private Account accFor(Long userId, String name, String type, String subType, String balance) {
         AccountRequest r = new AccountRequest();
         r.setName(name);
         r.setType(type);
         r.setSubType(subType);
         r.setInitialBalance(new BigDecimal(balance));
         r.setRemark("");
-        return accountService.create(1L, r);
+        return accountService.create(userId, r);
     }
 
     /** occurredAt 固定，避免依赖当前时间 */
@@ -233,6 +239,112 @@ class StatsServiceTest {
                 LocalDate.of(2026, 10, 1), LocalDate.of(2026, 10, 1)));
         assertEquals(0, new BigDecimal("1000.00").compareTo(vo.getInitialNetWorth()));
         assertEquals(0, new BigDecimal("1500.00").compareTo(vo.getPoints().get(0).getNetWorth()));
+    }
+
+    @Autowired
+    private com.balancewise.category.mapper.CategoryMapper categoryMapper;
+
+    private com.balancewise.category.entity.Category cat(String name, String kind, Long parentId, Long userId) {
+        com.balancewise.category.entity.Category c = new com.balancewise.category.entity.Category();
+        c.setUserId(userId);
+        c.setName(name);
+        c.setKind(kind);
+        c.setParentId(parentId);
+        c.setIsSystem(0);
+        categoryMapper.insert(c);
+        return c;
+    }
+
+    /** 造数纪律：分类必须在 create 时带 categoryId（已记账流水再改分类会触发冲销，不用于统计造数） */
+    private void expenseWithCategory(Account from, String amount, LocalDateTime at, Long categoryId) {
+        com.balancewise.record.dto.TransactionRequest r = new com.balancewise.record.dto.TransactionRequest();
+        r.setType("expense");
+        r.setFromAccountId(from.getId());
+        r.setAmount(new BigDecimal(amount));
+        r.setOccurredAt(at);
+        r.setCategoryId(categoryId);
+        transactionService.create(1L, r);
+    }
+
+    @Test
+    void categoryRollsUpToTopLevelWithChildren() {
+        Account a = acc("卡A", "asset", "debit_card", "1000.00");
+        var food = cat("餐饮", "expense", null, 1L);
+        var meal = cat("三餐", "expense", food.getId(), 1L);
+        var takeout = cat("外卖", "expense", food.getId(), 1L);
+        // 餐饮一级：直接 10 + 三餐 30 + 外卖 20 = 60；未分类 15
+        expenseWithCategory(a, "30.00", LocalDateTime.of(2026, 10, 1, 8, 0), meal.getId());
+        expenseWithCategory(a, "20.00", LocalDateTime.of(2026, 10, 2, 8, 0), takeout.getId());
+        expenseWithCategory(a, "10.00", LocalDateTime.of(2026, 10, 3, 8, 0), food.getId());
+        expenseWithCategory(a, "15.00", LocalDateTime.of(2026, 10, 4, 8, 0), null);
+
+        StatsCategoryQuery q = new StatsCategoryQuery();
+        q.setType("expense");
+        q.setStart(LocalDate.of(2026, 10, 1));
+        q.setEnd(LocalDate.of(2026, 10, 31));
+        StatsCategoryVo vo = statsService.category(1L, q);
+
+        assertEquals(0, new BigDecimal("75.00").compareTo(vo.getTotal()));
+        assertEquals(2, vo.getItems().size());
+        // 降序：餐饮(60) 在前，未分类(15) 在后
+        var top = vo.getItems().get(0);
+        assertEquals("餐饮", top.getName());
+        assertEquals(food.getId(), top.getCategoryId());
+        assertEquals(0, new BigDecimal("60.00").compareTo(top.getAmount()));
+        assertEquals(0, new BigDecimal("80.00").compareTo(top.getPercentage()));
+        assertEquals(2, top.getChildren().size());
+        assertEquals("三餐", top.getChildren().get(0).getName());
+        assertEquals(0, new BigDecimal("30.00").compareTo(top.getChildren().get(0).getAmount()));
+        var uncategorized = vo.getItems().get(1);
+        assertNull(uncategorized.getCategoryId());
+        assertEquals("未分类", uncategorized.getName());
+        assertEquals(0, new BigDecimal("15.00").compareTo(uncategorized.getAmount()));
+    }
+
+    @Test
+    void categoryIsolatesByUserTypeAndTime() {
+        Account a1 = acc("卡A", "asset", "debit_card", "1000.00");
+        Account a2 = accFor(2L, "卡B", "asset", "cash", "0.00");
+        var mine = cat("餐饮", "expense", null, 1L);
+        var others = cat("餐饮", "expense", null, 2L);
+        com.balancewise.record.dto.TransactionRequest r1 = new com.balancewise.record.dto.TransactionRequest();
+        r1.setType("expense"); r1.setFromAccountId(a1.getId()); r1.setAmount(new BigDecimal("100.00"));
+        r1.setOccurredAt(LocalDateTime.of(2026, 10, 1, 8, 0)); r1.setCategoryId(mine.getId());
+        transactionService.create(1L, r1);
+        com.balancewise.record.dto.TransactionRequest r2 = new com.balancewise.record.dto.TransactionRequest();
+        r2.setType("expense"); r2.setFromAccountId(a2.getId()); r2.setAmount(new BigDecimal("999.00"));
+        r2.setOccurredAt(LocalDateTime.of(2026, 10, 1, 8, 0)); r2.setCategoryId(others.getId());
+        transactionService.create(2L, r2);
+
+        StatsCategoryQuery q = new StatsCategoryQuery();
+        q.setType("expense");
+        q.setStart(LocalDate.of(2026, 10, 1));
+        q.setEnd(LocalDate.of(2026, 10, 31));
+        StatsCategoryVo vo = statsService.category(1L, q);
+        // user 2 的 999 绝不混入
+        assertEquals(0, new BigDecimal("100.00").compareTo(vo.getTotal()));
+        assertEquals(1, vo.getItems().size());
+
+        // 时间过滤：只看 11 月 → 空
+        q.setStart(LocalDate.of(2026, 11, 1));
+        q.setEnd(LocalDate.of(2026, 11, 30));
+        StatsCategoryVo empty = statsService.category(1L, q);
+        assertEquals(0, BigDecimal.ZERO.compareTo(empty.getTotal()));
+        assertTrue(empty.getItems().isEmpty());
+
+        // 收入分类 kind 不混进支出构成（type=expense 只查 expense 分类树，且 SQL 已限定 type）
+        q.setStart(LocalDate.of(2026, 10, 1));
+        q.setEnd(LocalDate.of(2026, 10, 31));
+        q.setType("income");
+        assertTrue(statsService.category(1L, q).getItems().isEmpty());
+    }
+
+    @Test
+    void categoryValidatesType() {
+        StatsCategoryQuery q = new StatsCategoryQuery();
+        q.setType("transfer");
+        BizException e = assertThrows(BizException.class, () -> statsService.category(1L, q));
+        assertEquals("type 必须是 expense 或 income", e.getMessage());
     }
 
     @Test
