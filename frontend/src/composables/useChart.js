@@ -39,5 +39,5 @@ export function useChart() {
     else pendingEvents.push([ev, fn])
   }
 
-  return { el, setOption, on }
+  return { el, setOption, on, resize }
 }

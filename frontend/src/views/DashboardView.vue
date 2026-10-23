@@ -82,7 +82,7 @@
 </template>
 
 <script setup>
-import { onMounted, reactive, ref } from 'vue'
+import { nextTick, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import request from '../api/request'
 import { useChart } from '../composables/useChart'
@@ -95,7 +95,8 @@ const recent = ref([])
 const pieItems = ref([])
 
 const { el: trendEl, setOption: setTrend } = useChart()
-const { el: pieEl, setOption: setPie } = useChart()
+const pieChart = useChart()
+const { el: pieEl, setOption: setPie } = pieChart
 
 const money = v => Number(v || 0).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const pad = n => String(n).padStart(2, '0')
@@ -118,6 +119,8 @@ onMounted(async () => {
   Object.assign(month, sum.data)
   recent.value = txn.data.records
   pieItems.value = pie.data.items
+  await nextTick()
+  pieChart.resize()
 
   setTrend({
     tooltip: { trigger: 'axis', valueFormatter: v => money(v) },
