@@ -9,7 +9,7 @@ const routes = [
     redirect: '/dashboard',
     children: [
       { path: 'dashboard', component: () => import('../views/PlaceholderView.vue'), meta: { title: '首页仪表盘' } },
-      { path: 'record', component: () => import('../views/PlaceholderView.vue'), meta: { title: '记一笔' } },
+      { path: 'record', component: () => import('../views/RecordView.vue'), meta: { title: '记一笔' } },
       { path: 'transactions', component: () => import('../views/PlaceholderView.vue'), meta: { title: '流水' } },
       { path: 'import', component: () => import('../views/PlaceholderView.vue'), meta: { title: '账单导入' } },
       { path: 'accounts', component: () => import('../views/AccountView.vue'), meta: { title: '账户管理' } },
