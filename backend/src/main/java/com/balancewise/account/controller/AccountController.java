@@ -2,9 +2,12 @@ package com.balancewise.account.controller;
 
 import com.balancewise.account.dto.AccountRequest;
 import com.balancewise.account.dto.ArchiveRequest;
+import com.balancewise.account.dto.ReconcileRequest;
 import com.balancewise.account.entity.Account;
 import com.balancewise.account.service.AccountService;
+import com.balancewise.account.service.ReconcileService;
 import com.balancewise.account.vo.AccountSummaryVo;
+import com.balancewise.account.vo.ReconcileResultVo;
 import com.balancewise.auth.CurrentUser;
 import com.balancewise.common.Result;
 import jakarta.validation.Valid;
@@ -15,9 +18,11 @@ import org.springframework.web.bind.annotation.*;
 public class AccountController {
 
     private final AccountService accountService;
+    private final ReconcileService reconcileService;
 
-    public AccountController(AccountService accountService) {
+    public AccountController(AccountService accountService, ReconcileService reconcileService) {
         this.accountService = accountService;
+        this.reconcileService = reconcileService;
     }
 
     @GetMapping
@@ -47,5 +52,12 @@ public class AccountController {
                                 @Valid @RequestBody ArchiveRequest req) {
         accountService.archive(userId, id, req.getIsArchived());
         return Result.ok();
+    }
+
+    /** 余额校正（UC-2.6 / 规格 7.6）：提交实际余额，生成差额校正流水（source=reconcile） */
+    @PostMapping("/{id}/reconcile")
+    public Result<ReconcileResultVo> reconcile(@CurrentUser Long userId, @PathVariable Long id,
+                                               @Valid @RequestBody ReconcileRequest req) {
+        return Result.ok(reconcileService.reconcile(userId, id, req));
     }
 }
