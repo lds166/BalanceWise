@@ -11,6 +11,7 @@
         <el-menu-item index="/accounts"><el-icon><CreditCard /></el-icon>账户管理</el-menu-item>
         <el-menu-item index="/categories"><el-icon><CollectionTag /></el-icon>分类管理</el-menu-item>
         <el-menu-item index="/stats"><el-icon><DataAnalysis /></el-icon>统计报表</el-menu-item>
+        <el-menu-item index="/user"><el-icon><User /></el-icon>用户中心</el-menu-item>
       </el-menu>
       <div class="logout" @click="doLogout">↩ 退出登录</div>
     </el-aside>
@@ -30,7 +31,7 @@
 import { useRouter } from 'vue-router'
 import { useUserStore } from '../stores/user'
 import {
-  HomeFilled, EditPen, Notebook, Download, CreditCard, CollectionTag, DataAnalysis,
+  HomeFilled, EditPen, Notebook, Download, CreditCard, CollectionTag, DataAnalysis, User,
 } from '@element-plus/icons-vue'
 
 const router = useRouter()
