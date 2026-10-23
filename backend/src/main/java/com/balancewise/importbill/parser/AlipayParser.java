@@ -1,5 +1,7 @@
 package com.balancewise.importbill.parser;
 
+import org.springframework.stereotype.Component;
+
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -9,6 +11,7 @@ import java.util.Map;
  * 表头前 4 行为说明（"支付宝交易记录明细查询"等），解析器按首行单元格 == "交易号" 定位表头。
  * 仅保留 状态=交易成功 的记录；类型识别：退款→收入，余额宝/转账类→转账，其余按 收/支。
  */
+@Component
 public class AlipayParser implements BillParser {
 
     private static final Map<String, String> TYPE_MAP = Map.of(

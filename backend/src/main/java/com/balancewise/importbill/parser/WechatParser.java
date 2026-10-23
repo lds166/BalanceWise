@@ -1,5 +1,7 @@
 package com.balancewise.importbill.parser;
 
+import org.springframework.stereotype.Component;
+
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -9,6 +11,7 @@ import java.util.Map;
  * 按首行单元格 == "交易时间" 定位表头；仅保留 状态=支付成功 的记录。
  * 类型识别：充值/提现/零钱通/转账类 → transfer；红包按收/支；其余消费类按收/支。
  */
+@Component
 public class WechatParser implements BillParser {
 
     private static final java.util.Set<String> TRANSFER_TYPES = java.util.Set.of(
