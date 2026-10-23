@@ -1,14 +1,22 @@
 package com.balancewise.stats.service;
 
+import com.balancewise.common.BizException;
+import com.balancewise.stats.dto.StatsTrendQuery;
 import com.balancewise.stats.mapper.StatsMapper;
+import com.balancewise.stats.mapper.row.DailyFlowRow;
 import com.balancewise.stats.mapper.row.TypeSumRow;
 import com.balancewise.stats.vo.StatsSummaryVo;
+import com.balancewise.stats.vo.StatsTrendVo;
+import com.balancewise.stats.vo.TrendPointVo;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.YearMonth;
+import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -51,5 +59,108 @@ public class StatsService {
     /** end 排他上界 < 次日 00:00:00（含 end 当天全部）；null = 含至今全部 */
     private LocalDateTime toOf(LocalDate end) {
         return end != null ? end.plusDays(1).atStartOfDay() : LocalDateTime.now().plusDays(1);
+    }
+
+    /**
+     * 收支趋势（UC-5.3）。month：按月（近 months 个月含当月，或 start~end 覆盖的月份逐一补零）；
+     * day：按日（必须 start+end，跨度 ≤ 366 天）。每期 income/expense 聚合、balance = income - expense。
+     */
+    public StatsTrendVo trend(Long userId, StatsTrendQuery q) {
+        Range range = resolveRange(q);
+        List<DailyFlowRow> flows = statsMapper.dailyFlows(userId, range.from(), range.to(), q.getAccountId());
+        StatsTrendVo vo = new StatsTrendVo();
+        List<TrendPointVo> points = new ArrayList<>();
+        for (String label : bucketLabels(range)) {
+            BigDecimal income = BigDecimal.ZERO;
+            BigDecimal expense = BigDecimal.ZERO;
+            for (DailyFlowRow f : flows) {
+                boolean inBucket = "month".equals(range.groupBy())
+                        ? YearMonth.from(f.getDay()).equals(YearMonth.parse(label))
+                        : f.getDay().equals(LocalDate.parse(label));
+                if (inBucket) {
+                    if ("income".equals(f.getType())) {
+                        income = income.add(f.getTotal());
+                    } else {
+                        expense = expense.add(f.getTotal());
+                    }
+                }
+            }
+            TrendPointVo p = new TrendPointVo();
+            p.setLabel(label);
+            p.setIncome(income.setScale(2, RoundingMode.HALF_UP));
+            p.setExpense(expense.setScale(2, RoundingMode.HALF_UP));
+            p.setBalance(income.subtract(expense).setScale(2, RoundingMode.HALF_UP));
+            points.add(p);
+        }
+        vo.setPoints(points);
+        return vo;
+    }
+
+    /** 解析趋势区间：groupBy 校验 + 区间推导（month 快捷 = 近 months 个月含当月；显式 start/end 覆盖） */
+    private Range resolveRange(StatsTrendQuery q) {
+        String groupBy = q.getGroupBy() == null || q.getGroupBy().isBlank() ? "month" : q.getGroupBy();
+        if (!"month".equals(groupBy) && !"day".equals(groupBy)) {
+            throw new BizException("groupBy 必须是 month 或 day");
+        }
+        if ("day".equals(groupBy)) {
+            if (q.getStart() == null || q.getEnd() == null) {
+                throw new BizException("按日统计必须提供 start 和 end");
+            }
+            checkSpan(q.getStart(), q.getEnd(), ChronoUnit.DAYS, 366, "按日统计区间不能超过 366 天");
+            return new Range(groupBy, q.getStart(), q.getEnd(),
+                    q.getStart().atStartOfDay(), q.getEnd().plusDays(1).atStartOfDay());
+        }
+        if (q.getStart() != null && q.getEnd() != null) {
+            checkSpan(q.getStart(), q.getEnd(), ChronoUnit.MONTHS, 24, "按月统计区间不能超过 24 个月");
+            return new Range(groupBy, q.getStart(), q.getEnd(),
+                    q.getStart().atStartOfDay(), q.getEnd().plusDays(1).atStartOfDay());
+        }
+        int months = q.getMonths() == null ? 6 : q.getMonths();
+        if (months < 1 || months > 24) {
+            throw new BizException("months 必须在 1~24 之间");
+        }
+        LocalDate now = LocalDate.now();
+        LocalDate start = now.minusMonths(months - 1L).withDayOfMonth(1);
+        return new Range(groupBy, start, now, start.atStartOfDay(), now.plusDays(1).atStartOfDay());
+    }
+
+    private void checkSpan(LocalDate start, LocalDate end, ChronoUnit unit, long max, String message) {
+        if (start.isAfter(end)) {
+            throw new BizException("start 不能晚于 end");
+        }
+        if (unit.between(start, end) > max) {
+            throw new BizException(message);
+        }
+    }
+
+    /** 桶标签全集（首尾齐全，无数据期也在内）：month → yyyy-MM；day → yyyy-MM-dd */
+    private List<String> bucketLabels(Range r) {
+        List<String> labels = new ArrayList<>();
+        if ("month".equals(r.groupBy())) {
+            YearMonth cursor = YearMonth.from(r.start());
+            YearMonth last = YearMonth.from(r.end());
+            while (!cursor.isAfter(last)) {
+                labels.add(cursor.toString());
+                cursor = cursor.plusMonths(1);
+            }
+        } else {
+            for (LocalDate d = r.start(); !d.isAfter(r.end()); d = d.plusDays(1)) {
+                labels.add(d.toString());
+            }
+        }
+        return labels;
+    }
+
+    /** 桶的期末（含）：月桶 = 月末；日桶 = 当天。净资产累计「期初至今」用 */
+    private LocalDate bucketEndDate(Range r, String label) {
+        if ("month".equals(r.groupBy())) {
+            return YearMonth.parse(label).atEndOfMonth();
+        }
+        return LocalDate.parse(label);
+    }
+
+    /** 解析后的统计区间：groupBy + 起止（含）+ SQL 边界（from 可空 = 无下界，to 排他） */
+    private record Range(String groupBy, LocalDate start, LocalDate end,
+                         LocalDateTime from, LocalDateTime to) {
     }
 }

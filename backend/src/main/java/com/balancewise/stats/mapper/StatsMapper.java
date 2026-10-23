@@ -1,5 +1,6 @@
 package com.balancewise.stats.mapper;
 
+import com.balancewise.stats.mapper.row.DailyFlowRow;
 import com.balancewise.stats.mapper.row.TypeSumRow;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
@@ -28,4 +29,18 @@ public interface StatsMapper {
                                @Param("from") LocalDateTime from,
                                @Param("to") LocalDateTime to,
                                @Param("accountId") Long accountId);
+
+    /** 区间内按日+类型汇总，按 day 升序返回；from 可空（无下界） */
+    @Select("<script>" +
+            "SELECT DATE(occurred_at) AS `day`, type, SUM(amount) AS total FROM transaction_record " +
+            "WHERE user_id = #{userId} AND is_deleted = 0 AND type IN ('expense','income') " +
+            "<if test='from != null'>AND occurred_at &gt;= #{from} </if>" +
+            "AND occurred_at &lt; #{to} " +
+            "<if test='accountId != null'>AND (from_account_id = #{accountId} OR to_account_id = #{accountId}) </if>" +
+            "GROUP BY DATE(occurred_at), type ORDER BY `day`" +
+            "</script>")
+    List<DailyFlowRow> dailyFlows(@Param("userId") Long userId,
+                                  @Param("from") LocalDateTime from,
+                                  @Param("to") LocalDateTime to,
+                                  @Param("accountId") Long accountId);
 }
