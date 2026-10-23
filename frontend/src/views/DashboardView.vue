@@ -101,8 +101,8 @@ const { el: pieEl, setOption: setPie } = pieChart
 const money = v => Number(v || 0).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const pad = n => String(n).padStart(2, '0')
 const fmtDate = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
-// 后端 occurredAt 为 "yyyy-MM-dd HH:mm:ss"，截取本地化显示到分钟（台账 #13）
-const fmtTime = s => (s ? String(s).slice(0, 16) : '—')
+// 后端 occurredAt 序列化为 ISO "yyyy-MM-ddTHH:mm:ss"（Jackson 默认），归一化为 "yyyy-MM-dd HH:mm" 显示（台账 #13）
+const fmtTime = s => (s ? String(s).replace('T', ' ').slice(0, 16) : '—')
 
 const now = new Date()
 const monthStart = fmtDate(new Date(now.getFullYear(), now.getMonth(), 1))
