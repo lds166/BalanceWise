@@ -57,6 +57,24 @@ class AuthApiTest {
     }
 
     @Test
+    void noTokenReturns401WithBody() throws Exception {
+        MvcResult res = mockMvc.perform(get("/api/test/ping"))
+                .andExpect(status().is(401))
+                .andReturn();
+        String body = res.getResponse().getContentAsString();
+        assertTrue(body.contains("\"code\":401"));
+        assertTrue(body.contains("未登录"));
+    }
+
+    @Test
+    void tamperedTokenReturns401() throws Exception {
+        String token = jwtUtil.generate(7L);
+        mockMvc.perform(get("/api/test/ping")
+                        .header("Authorization", "Bearer " + token + "tampered"))
+                .andExpect(status().is(401));
+    }
+
+    @Test
     void authEndpointsAreExcludedFromInterceptor() throws Exception {
         // /api/auth/** 无 token 也应到达 controller（此处 404 即可证明未被拦截器拦下）
         mockMvc.perform(get("/api/auth/not-exist"))

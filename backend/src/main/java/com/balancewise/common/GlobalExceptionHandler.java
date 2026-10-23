@@ -1,5 +1,8 @@
 package com.balancewise.common;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -9,6 +12,8 @@ import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
     @ExceptionHandler(BizException.class)
     public Result<Void> handleBiz(BizException e) {
@@ -32,9 +37,16 @@ public class GlobalExceptionHandler {
         return Result.fail(400, msg);
     }
 
+    // 并发撞唯一索引（如并发注册同名用户）从 500 转为友好 400
+    @ExceptionHandler(DuplicateKeyException.class)
+    public Result<Void> handleDuplicateKey(DuplicateKeyException e) {
+        log.warn("duplicate key: {}", e.getMessage());
+        return Result.fail(400, "数据已存在，请勿重复提交");
+    }
+
     @ExceptionHandler(Exception.class)
     public Result<Void> handleOther(Exception e) {
-        e.printStackTrace();
+        log.error("unexpected error", e);
         return Result.fail(500, "系统异常，请稍后重试");
     }
 }
