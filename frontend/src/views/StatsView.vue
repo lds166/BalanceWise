@@ -124,7 +124,6 @@ const range = computed(() => {
     return { start: fmtDate(new Date(now.getFullYear(), now.getMonth(), 1)), end: fmtDate(now) }
   }
   if (preset.value === 'lastMonth') {
-    const first = new Date(now.getFullYear(), now.getMonth(), 1)
     const last = new Date(now.getFullYear(), now.getMonth(), 0)
     return { start: fmtDate(new Date(last.getFullYear(), last.getMonth(), 1)), end: fmtDate(last) }
   }

@@ -48,7 +48,7 @@
         </div>
       </template>
       <el-table :data="recent" size="small">
-        <el-table-column prop="occurredAt" label="时间" width="165" />
+        <el-table-column label="时间" width="150" :formatter="({ occurredAt }) => fmtTime(occurredAt)" />
         <el-table-column label="类型" width="76">
           <template #default="{ row }">
             <el-tag size="small"
@@ -101,6 +101,8 @@ const { el: pieEl, setOption: setPie } = pieChart
 const money = v => Number(v || 0).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const pad = n => String(n).padStart(2, '0')
 const fmtDate = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+// 后端 occurredAt 为 "yyyy-MM-dd HH:mm:ss"，截取本地化显示到分钟（台账 #13）
+const fmtTime = s => (s ? String(s).slice(0, 16) : '—')
 
 const now = new Date()
 const monthStart = fmtDate(new Date(now.getFullYear(), now.getMonth(), 1))
