@@ -170,7 +170,7 @@ onMounted(async () => {
   })
   if (pieItems.value.length) {
     setPie({
-      color: ['#f28c38', '#f6b352', '#e8684a', '#3fa37a', '#c9a3e0', '#6ba8d8', '#e2b96f', '#8fbf7f', '#d87f9a', '#7f9fd8'],
+      color: ['#dfa76e', '#eec389', '#d98a76', '#6aa88b', '#c5b0cf', '#8fb0cc', '#dfc48c', '#a9c39c', '#d9a8b2', '#9db0d0'],
       tooltip: { trigger: 'item', valueFormatter: v => money(v) },
       legend: { bottom: 0, type: 'scroll' },
       series: [{

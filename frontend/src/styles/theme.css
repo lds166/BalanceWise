@@ -7,23 +7,23 @@
 /* ---------- 温暖手账（默认） ---------- */
 :root,
 [data-theme='journal'] {
-  --bw-primary: #f28c38;
-  --bw-primary-strong: #e07a24;
-  --bw-primary-soft: #fdeeda;
-  --bw-bg: #faf7f0;
+  --bw-primary: #e0a470;
+  --bw-primary-strong: #c98e55;
+  --bw-primary-soft: #f8ecd9;
+  --bw-bg: #faf7f1;
   --bw-card: #ffffff;
   --bw-text: #4a4238;
-  --bw-text-secondary: #9a9084;
-  --bw-border: #f0e8da;
-  --bw-income: #3fa37a;
-  --bw-income-soft: #e2f3ea;
-  --bw-expense: #e8684a;
-  --bw-expense-soft: #fbe7e1;
-  --bw-shadow: 0 6px 20px rgba(122, 88, 42, 0.08);
-  --bw-shadow-hover: 0 10px 28px rgba(122, 88, 42, 0.14);
+  --bw-text-secondary: #a39a8b;
+  --bw-border: #f1e9db;
+  --bw-income: #6aa88b;
+  --bw-income-soft: #e7f1ea;
+  --bw-expense: #d98a76;
+  --bw-expense-soft: #f9ebe6;
+  --bw-shadow: 0 6px 20px rgba(122, 88, 42, 0.07);
+  --bw-shadow-hover: 0 10px 28px rgba(122, 88, 42, 0.12);
   --bw-radius: 16px;
   --bw-radius-lg: 20px;
-  --bw-hero-gradient: linear-gradient(135deg, #f6a04a 0%, #ee7d35 60%, #e8684a 100%);
+  --bw-hero-gradient: linear-gradient(135deg, #ecc593 0%, #dfa76e 60%, #cf9068 100%);
 }
 
 /* ---------- 清新薄荷 ---------- */

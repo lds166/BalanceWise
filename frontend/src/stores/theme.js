@@ -4,7 +4,7 @@ const STORAGE_KEY = 'bw-theme'
 export const DEFAULT_THEME = 'journal'
 
 export const THEMES = [
-  { id: 'journal', name: '温暖手账', dot: '#f28c38', desc: '奶油暖橙 · 默认' },
+  { id: 'journal', name: '温暖手账', dot: '#e0a470', desc: '奶油暖橙 · 默认' },
   { id: 'mint', name: '清新薄荷', dot: '#2fb98c', desc: '浅绿便签 · 轻快' },
   { id: 'morandi', name: '雾粉莫兰迪', dot: '#c08a97', desc: '低饱和 · 柔和' },
   { id: 'night', name: '暗夜质感', dot: '#f2a24d', desc: '深色磨砂 · 酷' },
