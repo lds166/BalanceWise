@@ -3,15 +3,22 @@ package com.balancewise.importbill.service;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.balancewise.account.entity.Account;
 import com.balancewise.common.BizException;
+import com.balancewise.importbill.dto.ImportConfirmRequest;
 import com.balancewise.importbill.dto.ImportPreviewRow;
+import com.balancewise.importbill.dto.ImportRowRequest;
+import com.balancewise.importbill.entity.ImportBatch;
+import com.balancewise.importbill.mapper.ImportBatchMapper;
 import com.balancewise.importbill.parser.BillParseResult;
 import com.balancewise.importbill.parser.BillParser;
 import com.balancewise.importbill.parser.ParsedRow;
 import com.balancewise.importbill.vo.ImportPreviewVo;
 import com.balancewise.record.entity.TransactionRecord;
 import com.balancewise.record.mapper.TransactionRecordMapper;
+import com.balancewise.record.service.TransactionService;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -30,15 +37,21 @@ public class ImportService {
     private final CategoryMappingService categoryMappingService;
     private final AccountMatcher accountMatcher;
     private final TransactionRecordMapper transactionRecordMapper;
+    private final ImportBatchMapper importBatchMapper;
+    private final TransactionService transactionService;
 
     public ImportService(List<BillParser> parserList,
                          CategoryMappingService categoryMappingService,
                          AccountMatcher accountMatcher,
-                         TransactionRecordMapper transactionRecordMapper) {
+                         TransactionRecordMapper transactionRecordMapper,
+                         ImportBatchMapper importBatchMapper,
+                         TransactionService transactionService) {
         this.parsers = parserList.stream().collect(Collectors.toMap(BillParser::platform, Function.identity()));
         this.categoryMappingService = categoryMappingService;
         this.accountMatcher = accountMatcher;
         this.transactionRecordMapper = transactionRecordMapper;
+        this.importBatchMapper = importBatchMapper;
+        this.transactionService = transactionService;
     }
 
     public ImportPreviewVo preview(Long userId, String platform, byte[] content, Long defaultAccountId) {
@@ -84,6 +97,54 @@ public class ImportService {
         vo.setRows(rows);
         vo.setDropped(parsed.getDropped());
         return vo;
+    }
+
+    /**
+     * 批次入账（UC-4.8 / 规格 7.4 步骤 7）：单事务——
+     * 重复校验 → 插 import_batch(confirmed) → 逐条经 TransactionService.importRecord 入账（余额联动同生共死）。
+     */
+    @Transactional
+    public ImportBatch confirm(Long userId, ImportConfirmRequest req) {
+        // 服务层兜底：直接调用（绕过 @Valid）时空行必须在插批次前拒绝；文案须含"至少一条"（测试断言）
+        if (req.getRows() == null || req.getRows().isEmpty()) {
+            throw new BizException("批次入账至少一条流水，请勾选后再确认");
+        }
+        List<String> externalIds = req.getRows().stream()
+                .map(ImportRowRequest::getExternalId)
+                .filter(id -> id != null && !id.isBlank())
+                .collect(Collectors.toList());
+        long dupCount = existingExternalIds(userId, req.getPlatform(), externalIds).size();
+        if (dupCount > 0) {
+            throw new BizException("包含 " + dupCount + " 条已入账记录，请重新预览后再确认");
+        }
+
+        ImportBatch batch = new ImportBatch();
+        batch.setUserId(userId);
+        batch.setPlatform(req.getPlatform());
+        batch.setFileName(req.getFileName() != null ? req.getFileName() : "");
+        batch.setRecordCount(req.getRows().size());
+        batch.setTotalAmount(req.getRows().stream()
+                .map(ImportRowRequest::getAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add)
+                .setScale(2, java.math.RoundingMode.HALF_UP));
+        batch.setStatus("confirmed");
+        batch.setImportedAt(java.time.LocalDateTime.now());
+        importBatchMapper.insert(batch);
+
+        for (ImportRowRequest row : req.getRows()) {
+            com.balancewise.record.dto.TransactionRequest txn = new com.balancewise.record.dto.TransactionRequest();
+            txn.setType(row.getType());
+            txn.setFromAccountId(row.getFromAccountId());
+            txn.setToAccountId(row.getToAccountId());
+            txn.setAmount(row.getAmount());
+            txn.setCategoryId(row.getCategoryId());
+            txn.setOccurredAt(row.getOccurredAt());
+            txn.setCounterparty(row.getCounterparty());
+            txn.setItem(row.getItem());
+            transactionService.importRecord(userId, req.getPlatform(), row.getExternalId(),
+                    batch.getId(), txn);
+        }
+        return batch;
     }
 
     /** 库中已存在的同源未删除 external_id（§5.4 规则 4：应用层重复检测） */

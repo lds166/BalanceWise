@@ -118,6 +118,21 @@ public class TransactionService extends ServiceImpl<TransactionRecordMapper, Tra
 
     @Transactional
     public TransactionRecord create(Long userId, TransactionRequest req) {
+        return createInternal(userId, req, "manual", null, null);
+    }
+
+    /**
+     * 导入入账（P3）：与手工记账共用同一校验与余额联动路径，
+     * 仅 source/externalId/importBatchId 不同。绝不复制余额逻辑。
+     */
+    @Transactional
+    public TransactionRecord importRecord(Long userId, String source, String externalId,
+                                          Long importBatchId, TransactionRequest req) {
+        return createInternal(userId, req, source, externalId, importBatchId);
+    }
+
+    private TransactionRecord createInternal(Long userId, TransactionRequest req,
+                                             String source, String externalId, Long importBatchId) {
         Long[] accounts = resolveAccounts(userId, req);
         validateCategory(userId, req.getType(), req.getCategoryId());
         BigDecimal amount = normalizeAmount(req);
@@ -132,7 +147,9 @@ public class TransactionService extends ServiceImpl<TransactionRecordMapper, Tra
         r.setOccurredAt(req.getOccurredAt() != null ? req.getOccurredAt() : LocalDateTime.now());
         r.setCounterparty(req.getCounterparty());
         r.setItem(req.getItem());
-        r.setSource("manual");
+        r.setSource(source);
+        r.setExternalId(externalId);
+        r.setImportBatchId(importBatchId);
         r.setIsDeleted(0);
         save(r);
 
