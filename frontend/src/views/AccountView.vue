@@ -22,13 +22,15 @@
           <el-button type="primary" size="small" @click="openDialog()">＋ 新建账户</el-button>
         </div>
       </template>
-      <AccountRow v-for="a in assets" :key="a.id" :acc="a" @edit="openDialog(a)" @archive="toggleArchive" @remove="remove" />
+      <AccountRow v-for="a in assets" :key="a.id" :acc="a"
+                  @reconcile="openReconcile" @edit="openDialog(a)" @archive="toggleArchive" @remove="remove" />
       <el-empty v-if="!assets.length" description="暂无资产账户" :image-size="60" />
     </el-card>
 
     <el-card>
       <template #header><span>负债账户</span></template>
-      <AccountRow v-for="a in liabilities" :key="a.id" :acc="a" @edit="openDialog(a)" @archive="toggleArchive" @remove="remove" />
+      <AccountRow v-for="a in liabilities" :key="a.id" :acc="a"
+                  @reconcile="openReconcile" @edit="openDialog(a)" @archive="toggleArchive" @remove="remove" />
       <el-empty v-if="!liabilities.length" description="暂无负债账户" :image-size="60" />
     </el-card>
 
@@ -59,6 +61,32 @@
       <template #footer>
         <el-button @click="dialog.visible = false">取消</el-button>
         <el-button type="primary" :loading="dialog.saving" @click="save">保存</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="recon.visible" :title="`对账——${recon.name}`" width="420px">
+      <el-form label-width="96px">
+        <el-form-item label="账面余额">
+          <span class="recon-balance">¥{{ money(recon.bookBalance) }}</span>
+          <span v-if="recon.isLiability" class="hint" style="margin-left: 8px">（欠款，按正数填写）</span>
+        </el-form-item>
+        <el-form-item label="实际余额">
+          <el-input-number v-model="recon.actual" :precision="2" :step="10" style="width: 100%" />
+        </el-form-item>
+        <el-form-item label="差额">
+          <span :class="reconDiff > 0 ? 'income' : reconDiff < 0 ? 'expense' : 'muted'">
+            {{ reconDiff > 0 ? '+' : '' }}{{ money(reconDiff) }}
+          </span>
+          <span class="hint" style="margin-left: 8px">
+            {{ reconDiff > 0 ? '将增加余额' : reconDiff < 0 ? '将减少余额' : '无需校正' }}
+          </span>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="recon.visible = false">取消</el-button>
+        <el-button type="primary" :loading="recon.saving" :disabled="reconDiff === 0" @click="submitReconcile">
+          生成校正流水
+        </el-button>
       </template>
     </el-dialog>
   </div>
@@ -142,7 +170,40 @@ async function remove(acc) {
   await load()
 }
 
-// 行内子组件：名称 + 子类型 + 余额 + 操作按钮
+const recon = reactive({
+  visible: false, saving: false, id: null, name: '',
+  isLiability: false, bookBalance: 0, actual: 0,
+})
+// 展示口径差额：录入值 − 账面余额（正=将增加余额/减少欠款）；提交后以后端返回为准
+const reconDiff = computed(() => Number(((recon.actual || 0) - recon.bookBalance).toFixed(2)))
+
+function openReconcile(acc) {
+  if (acc.isArchived) {
+    ElMessage.warning('账户已归档，请先恢复后再对账')
+    return
+  }
+  Object.assign(recon, {
+    visible: true, saving: false, id: acc.id, name: acc.name,
+    isLiability: acc.type === 'liability',
+    bookBalance: acc.type === 'liability' ? -Number(acc.balance) : Number(acc.balance),
+    actual: acc.type === 'liability' ? -Number(acc.balance) : Number(acc.balance),
+  })
+}
+
+async function submitReconcile() {
+  recon.saving = true
+  try {
+    const res = await request.post(`/accounts/${recon.id}/reconcile`, { actualBalance: recon.actual })
+    const typeLabel = res.data.correctionType === 'income' ? '收入' : '支出'
+    ElMessage.success(`已生成${typeLabel}校正流水，差额 ¥${money(Math.abs(Number(res.data.diff)))}`)
+    recon.visible = false
+    await load()
+  } finally {
+    recon.saving = false
+  }
+}
+
+// 行内子组件：名称 + 子类型 + 余额 + 操作按钮（emits 显式声明，消除属性透传警告）
 const AccountRow = (props, { emit }) => {
   const acc = props.acc
   const label = (SUB_TYPES[acc.type] || {})[acc.subType] || acc.subType
@@ -156,6 +217,7 @@ const AccountRow = (props, { emit }) => {
     h('div', { class: 'acc-ops' }, [
       h('span', { class: ['acc-balance', acc.type === 'liability' ? 'expense' : ''] },
         `¥${money(display)}`),
+      h(ElButton, { size: 'small', onClick: () => emit('reconcile', acc) }, () => '对账'),
       h(ElButton, { size: 'small', onClick: () => emit('edit', acc) }, () => '编辑'),
       h(ElButton, { size: 'small', onClick: () => emit('archive', acc) }, () => (acc.isArchived ? '恢复' : '归档')),
       h(ElButton, { size: 'small', type: 'danger', plain: true, onClick: () => emit('remove', acc) }, () => '删除'),
@@ -163,6 +225,7 @@ const AccountRow = (props, { emit }) => {
   ])
 }
 AccountRow.props = { acc: { type: Object, required: true } }
+AccountRow.emits = ['reconcile', 'edit', 'archive', 'remove']
 
 onMounted(load)
 </script>
@@ -184,4 +247,7 @@ onMounted(load)
 :deep(.acc-ops) { display: flex; align-items: center; gap: 10px; }
 :deep(.acc-balance) { font-variant-numeric: tabular-nums; font-weight: 600; }
 :deep(.acc-balance.expense) { color: #e8604c; }
+.recon-balance { font-weight: 600; font-variant-numeric: tabular-nums; }
+.income { color: #3aa97a; }
+.muted { color: #8a90a3; }
 </style>
