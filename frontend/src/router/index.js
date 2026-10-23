@@ -15,7 +15,7 @@ const routes = [
       { path: 'accounts', component: () => import('../views/AccountView.vue'), meta: { title: '账户管理' } },
       { path: 'categories', component: () => import('../views/CategoryView.vue'), meta: { title: '分类管理' } },
       { path: 'stats', component: () => import('../views/StatsView.vue'), meta: { title: '统计报表' } },
-      { path: 'user', component: () => import('../views/UserCenterView.vue'), meta: { title: '用户中心' } },
+      { path: 'user', component: () => import('../views/UserCenterView.vue'), meta: { title: '个人信息' } },
     ],
   },
 ]

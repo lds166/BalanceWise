@@ -51,7 +51,7 @@
                 <span class="nick">{{ store.user?.nickname }}</span>
               </el-dropdown-item>
               <el-dropdown-item command="user" divided>
-                <el-icon><User /></el-icon>用户中心
+                <el-icon><User /></el-icon>个人信息
               </el-dropdown-item>
               <el-dropdown-item command="logout">
                 <el-icon><SwitchButton /></el-icon>退出登录
@@ -99,7 +99,6 @@ const menus = [
   { path: '/accounts', label: '账户', icon: CreditCard },
   { path: '/categories', label: '分类', icon: CollectionTag },
   { path: '/stats', label: '统计', icon: DataAnalysis },
-  { path: '/user', label: '我的', icon: User },
 ]
 
 const isActive = path => route.path === path || (path !== '/dashboard' && route.path.startsWith(path))
