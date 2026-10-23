@@ -301,4 +301,39 @@ class TransactionServiceTest {
         q.setEnd(LocalDate.of(2026, 10, 31));
         assertEquals(1, transactionService.page(1L, q).getTotal());
     }
+
+    @Test
+    void exportCsvContainsBomAndRows() {
+        Account a = acc("卡A", "asset", "debit_card", "1000.00");
+        Category food = cat("餐饮", "expense", null);
+        TransactionRequest r = req("expense", a.getId(), null, "25.50", food.getId());
+        r.setCounterparty("麦当劳");
+        r.setItem("午餐");
+        transactionService.create(1L, r);
+
+        String csv = transactionService.exportCsv(1L, new TransactionQuery());
+        assertTrue(csv.startsWith("\uFEFF")); // Excel 中文 BOM
+        assertTrue(csv.contains("类型,分类,账户,金额,时间,对方,备注,来源,批次号"));
+        assertTrue(csv.contains("支出"));
+        assertTrue(csv.contains("餐饮"));
+        assertTrue(csv.contains("卡A"));
+        assertTrue(csv.contains("25.50"));
+        assertTrue(csv.contains("麦当劳"));
+    }
+
+    @Test
+    void exportCsvRespectsFiltersAndExcludesDeleted() {
+        Account a = acc("卡A", "asset", "debit_card", "1000.00");
+        Account b = acc("卡B", "asset", "cash", "0.00");
+        TransactionRecord del = transactionService.create(1L,
+                req("expense", a.getId(), null, "10.00", null));
+        transactionService.delete(1L, del.getId());
+        transactionService.create(1L, req("income", null, b.getId(), "100.00", null));
+
+        TransactionQuery q = new TransactionQuery();
+        q.setType("income");
+        String csv = transactionService.exportCsv(1L, q);
+        assertTrue(csv.contains("收入"));
+        assertFalse(csv.contains("支出"));
+    }
 }

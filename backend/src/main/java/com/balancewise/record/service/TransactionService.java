@@ -222,7 +222,7 @@ public class TransactionService extends ServiceImpl<TransactionRecordMapper, Tra
     }
 
     /** 批量填充账户名与分类名，避免 N+1 */
-    private List<TransactionVo> enrich(List<TransactionRecord> list) {
+    protected List<TransactionVo> enrich(List<TransactionRecord> list) {
         Set<Long> accIds = new HashSet<>();
         Set<Long> catIds = new HashSet<>();
         for (TransactionRecord r : list) {
@@ -269,5 +269,58 @@ public class TransactionService extends ServiceImpl<TransactionRecordMapper, Tra
         wrapper.orderByDesc(TransactionRecord::getOccurredAt).orderByDesc(TransactionRecord::getId);
         Page<TransactionRecord> p = page(new Page<>(pageNo, size), wrapper);
         return new PageResult<>(p.getTotal(), enrich(p.getRecords()));
+    }
+
+    private static final java.util.Map<String, String> TYPE_LABEL = java.util.Map.of(
+            "expense", "支出", "income", "收入", "transfer", "转账");
+    private static final java.util.Map<String, String> SOURCE_LABEL = java.util.Map.of(
+            "manual", "手工", "alipay", "支付宝", "wechat", "微信", "reconcile", "余额校正");
+
+    /** CSV 字段转义：含逗号/引号/换行则加引号并翻倍引号 */
+    private String csv(String s) {
+        if (s == null) {
+            return "";
+        }
+        if (s.contains(",") || s.contains("\"") || s.contains("\n")) {
+            return "\"" + s.replace("\"", "\"\"") + "\"";
+        }
+        return s;
+    }
+
+    /**
+     * 按当前筛选条件导出 CSV（UC-3.6）。字段：类型,分类,账户,金额,时间,对方,备注,来源,批次号。
+     * 带 UTF-8 BOM 以便 Excel 直接打开中文。上限 50000 行。
+     */
+    public String exportCsv(Long userId, TransactionQuery q) {
+        var wrapper = buildWrapper(userId, q);
+        wrapper.orderByDesc(TransactionRecord::getOccurredAt).orderByDesc(TransactionRecord::getId);
+        wrapper.last("LIMIT 50000");
+        java.util.List<TransactionRecord> list = list(wrapper);
+        if (list.size() >= 50000) {
+            throw new BizException("导出数据超过 50000 行，请缩小筛选范围");
+        }
+
+        java.time.format.DateTimeFormatter fmt =
+                java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+        StringBuilder sb = new StringBuilder("﻿");
+        sb.append("类型,分类,账户,金额,时间,对方,备注,来源,批次号\n");
+        java.util.List<TransactionVo> vos = enrich(list);
+        for (TransactionVo v : vos) {
+            String acc = "transfer".equals(v.getType())
+                    ? (v.getFromAccountName() != null ? v.getFromAccountName() : "")
+                      + " → " + (v.getToAccountName() != null ? v.getToAccountName() : "")
+                    : ("expense".equals(v.getType()) ? v.getFromAccountName() : v.getToAccountName());
+            sb.append(csv(TYPE_LABEL.getOrDefault(v.getType(), v.getType()))).append(',')
+              .append(csv(v.getCategoryName())).append(',')
+              .append(csv(acc)).append(',')
+              .append(v.getAmount().toPlainString()).append(',')
+              .append(v.getOccurredAt() != null ? v.getOccurredAt().format(fmt) : "").append(',')
+              .append(csv(v.getCounterparty())).append(',')
+              .append(csv(v.getItem())).append(',')
+              .append(csv(SOURCE_LABEL.getOrDefault(v.getSource(), v.getSource()))).append(',')
+              .append(v.getImportBatchId() != null ? String.valueOf(v.getImportBatchId()) : "")
+              .append('\n');
+        }
+        return sb.toString();
     }
 }
