@@ -14,7 +14,7 @@ const routes = [
       { path: 'import', component: () => import('../views/ImportView.vue'), meta: { title: '账单导入' } },
       { path: 'accounts', component: () => import('../views/AccountView.vue'), meta: { title: '账户管理' } },
       { path: 'categories', component: () => import('../views/CategoryView.vue'), meta: { title: '分类管理' } },
-      { path: 'stats', component: () => import('../views/PlaceholderView.vue'), meta: { title: '统计报表' } },
+      { path: 'stats', component: () => import('../views/StatsView.vue'), meta: { title: '统计报表' } },
     ],
   },
 ]

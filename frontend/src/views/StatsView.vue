@@ -1,0 +1,265 @@
+<template>
+  <div>
+    <el-card shadow="never" style="margin-bottom: 16px">
+      <div class="filter-bar">
+        <el-radio-group v-model="preset" @change="loadAll">
+          <el-radio-button value="month">本月</el-radio-button>
+          <el-radio-button value="lastMonth">上月</el-radio-button>
+          <el-radio-button value="year">今年</el-radio-button>
+          <el-radio-button value="custom">自定义</el-radio-button>
+        </el-radio-group>
+        <el-date-picker v-if="preset === 'custom'" v-model="customRange" type="daterange"
+                        value-format="YYYY-MM-DD" range-separator="~"
+                        start-placeholder="开始日期" end-placeholder="结束日期"
+                        style="width: 250px" @change="loadAll" />
+        <el-select v-model="accountId" filterable clearable placeholder="全部账户"
+                   style="width: 160px" @change="loadAll">
+          <el-option v-for="a in accounts" :key="a.id" :label="a.name" :value="a.id" />
+        </el-select>
+        <el-radio-group v-model="granularity" @change="loadAll">
+          <el-radio-button value="month">按月</el-radio-button>
+          <el-radio-button value="day">按日</el-radio-button>
+        </el-radio-group>
+      </div>
+    </el-card>
+
+    <el-row :gutter="16">
+      <el-col :span="8">
+        <el-card shadow="hover" class="stat-card">
+          <div class="stat-label">收入合计</div>
+          <div class="stat-value income">¥ {{ money(summary.income) }}</div>
+        </el-card>
+      </el-col>
+      <el-col :span="8">
+        <el-card shadow="hover" class="stat-card">
+          <div class="stat-label">支出合计</div>
+          <div class="stat-value expense">¥ {{ money(summary.expense) }}</div>
+        </el-card>
+      </el-col>
+      <el-col :span="8">
+        <el-card shadow="hover" class="stat-card">
+          <div class="stat-label">结余</div>
+          <div class="stat-value" :class="Number(summary.balance) < 0 ? 'expense' : 'income'">
+            ¥ {{ money(summary.balance) }}
+          </div>
+        </el-card>
+      </el-col>
+    </el-row>
+
+    <el-row :gutter="16" style="margin-top: 16px">
+      <el-col :span="16">
+        <el-card shadow="hover">
+          <template #header><span>收支趋势（{{ granularity === 'month' ? '按月' : '按日' }}）</span></template>
+          <div ref="trendEl" class="chart lg" />
+        </el-card>
+      </el-col>
+      <el-col :span="8">
+        <el-card shadow="hover">
+          <template #header>
+            <div class="card-head">
+              <el-radio-group v-model="catType" size="small" @change="loadCategory">
+                <el-radio-button value="expense">支出构成</el-radio-button>
+                <el-radio-button value="income">收入构成</el-radio-button>
+              </el-radio-group>
+              <el-button v-if="drill" size="small" text type="primary" @click="drill = null">← 返回一级</el-button>
+            </div>
+          </template>
+          <div v-show="catItems.length" ref="pieEl" class="chart lg" />
+          <el-empty v-if="!catItems.length" description="该区间暂无数据" :image-size="70" />
+        </el-card>
+      </el-col>
+    </el-row>
+
+    <el-row :gutter="16" style="margin-top: 16px">
+      <el-col :span="16">
+        <el-card shadow="hover">
+          <template #header><span>账户余额对比</span></template>
+          <div ref="barEl" class="chart md" />
+        </el-card>
+      </el-col>
+      <el-col :span="8">
+        <el-card shadow="hover">
+          <template #header><span>资产 / 负债占比</span></template>
+          <div ref="ratioEl" class="chart md" />
+          <div class="ratio-text">
+            净资产 ¥ {{ money(accSummary.netWorth) }}<br>
+            资产合计 ¥ {{ money(accSummary.assetTotal) }} ／ 负债合计 ¥ {{ money(accSummary.liabilityTotal) }}
+          </div>
+        </el-card>
+      </el-col>
+    </el-row>
+  </div>
+</template>
+
+<script setup>
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
+import request from '../api/request'
+import { useChart } from '../composables/useChart'
+
+// ===== 多维筛选（UC-5.7）=====
+const preset = ref('month')
+const customRange = ref(null)
+const accountId = ref(null)
+const granularity = ref('month')
+const accounts = ref([])
+
+const summary = reactive({ income: 0, expense: 0, balance: 0 })
+const catType = ref('expense')
+const catItems = ref([])
+const drill = ref(null)
+const accSummary = reactive({ netWorth: 0, assetTotal: 0, liabilityTotal: 0, accounts: [] })
+
+const { el: trendEl, setOption: setTrend } = useChart()
+const { el: pieEl, setOption: setPie, on: onPie, resize: resizePie } = useChart()
+const { el: barEl, setOption: setBar } = useChart()
+const { el: ratioEl, setOption: setRatio } = useChart()
+
+const money = v => Number(v || 0).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+const pad = n => String(n).padStart(2, '0')
+const fmtDate = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+
+const range = computed(() => {
+  const now = new Date()
+  if (preset.value === 'month') {
+    return { start: fmtDate(new Date(now.getFullYear(), now.getMonth(), 1)), end: fmtDate(now) }
+  }
+  if (preset.value === 'lastMonth') {
+    const first = new Date(now.getFullYear(), now.getMonth(), 1)
+    const last = new Date(now.getFullYear(), now.getMonth(), 0)
+    return { start: fmtDate(new Date(last.getFullYear(), last.getMonth(), 1)), end: fmtDate(last) }
+  }
+  if (preset.value === 'year') {
+    return { start: fmtDate(new Date(now.getFullYear(), 0, 1)), end: fmtDate(now) }
+  }
+  const r = customRange.value
+  return r && r.length === 2
+    ? { start: r[0], end: r[1] }
+    : { start: fmtDate(new Date(now.getFullYear(), now.getMonth(), 1)), end: fmtDate(now) }
+})
+
+const baseParams = computed(() => ({
+  start: range.value.start,
+  end: range.value.end,
+  ...(accountId.value ? { accountId: accountId.value } : {}),
+}))
+
+onMounted(async () => {
+  const res = await request.get('/accounts')
+  accounts.value = res.data.accounts
+  Object.assign(accSummary, {
+    netWorth: res.data.netWorth,
+    assetTotal: res.data.assetTotal,
+    liabilityTotal: res.data.liabilityTotal,
+    accounts: res.data.accounts,
+  })
+  // 下钻：点击一级扇区进入二级（UC-5.5 可选下钻）
+  onPie('click', params => {
+    if (drill.value) return
+    const item = catItems.value.find(i => i.name === params.name)
+    if (item && item.children && item.children.length) drill.value = item
+  })
+  renderAccountsOverview()
+  await loadAll()
+})
+
+async function loadAll() {
+  drill.value = null
+  await Promise.all([loadSummary(), loadTrend(), loadCategory()])
+}
+
+async function loadSummary() {
+  const res = await request.get('/stats/summary', { params: baseParams.value })
+  Object.assign(summary, res.data)
+}
+
+async function loadTrend() {
+  const res = await request.get('/stats/trend', {
+    params: { ...baseParams.value, groupBy: granularity.value },
+  })
+  const pts = res.data.points
+  setTrend({
+    tooltip: { trigger: 'axis', valueFormatter: v => money(v) },
+    legend: { data: ['收入', '支出', '结余'], bottom: 0 },
+    grid: { left: 70, right: 20, top: 20, bottom: 46 },
+    xAxis: { type: 'category', data: pts.map(p => p.label) },
+    yAxis: { type: 'value' },
+    series: [
+      { name: '收入', type: 'line', smooth: true, data: pts.map(p => Number(p.income)) },
+      { name: '支出', type: 'line', smooth: true, data: pts.map(p => Number(p.expense)) },
+      { name: '结余', type: 'line', smooth: true, data: pts.map(p => Number(p.balance)) },
+    ],
+  })
+}
+
+async function loadCategory() {
+  const res = await request.get('/stats/category', {
+    params: { ...baseParams.value, type: catType.value },
+  })
+  catItems.value = res.data.items
+  renderPie()
+}
+
+function renderPie() {
+  const source = drill.value ? drill.value.children : catItems.value
+  if (!source.length) return
+  setPie({
+    tooltip: { trigger: 'item', valueFormatter: v => money(v) },
+    series: [{
+      type: 'pie',
+      radius: ['35%', '60%'],
+      center: ['50%', '50%'],
+      data: source.map(i => ({ name: i.name, value: Number(i.amount) })),
+      label: { formatter: '{b}\n{d}%' },
+    }],
+  })
+  // v-show 隐藏容器初始化为 0×0，数据到达显示后需 nextTick + resize（Task 6 评审已知修正）
+  nextTick(resizePie)
+}
+
+watch(drill, renderPie)
+
+/** 账户总览（UC-5.6）：数据源为 GET /api/accounts（P1 已提供），当前快照不随时间筛选变化 */
+function renderAccountsOverview() {
+  const items = accSummary.accounts
+  setBar({
+    tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, valueFormatter: v => money(v) },
+    grid: { left: 90, right: 40, top: 10, bottom: 26 },
+    xAxis: { type: 'value' },
+    yAxis: { type: 'category', data: items.map(a => a.name) },
+    series: [{
+      type: 'bar',
+      barMaxWidth: 22,
+      data: items.map(a => Number(a.balance)),
+      itemStyle: { color: p => (p.value < 0 ? '#e05252' : '#4e63f2') },
+      label: { show: true, position: 'right', fontSize: 11, formatter: p => money(p.value) },
+    }],
+  })
+  setRatio({
+    tooltip: { trigger: 'item', valueFormatter: v => money(v) },
+    legend: { bottom: 0 },
+    series: [{
+      type: 'pie',
+      radius: ['35%', '60%'],
+      center: ['50%', '42%'],
+      data: [
+        { name: '资产', value: Number(accSummary.assetTotal), itemStyle: { color: '#4e63f2' } },
+        { name: '负债', value: Number(accSummary.liabilityTotal), itemStyle: { color: '#e05252' } },
+      ],
+      label: { formatter: '{b}\n{d}%' },
+    }],
+  })
+}
+</script>
+
+<style scoped>
+.filter-bar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.stat-card { min-height: 96px; }
+.stat-label { color: #8a90a3; font-size: 13px; }
+.stat-value { font-size: 26px; font-weight: 700; margin-top: 8px; }
+.stat-value.income, .income { color: #2f9e6e; }
+.stat-value.expense, .expense { color: #e05252; }
+.chart.lg { height: 320px; }
+.chart.md { height: 260px; }
+.card-head { display: flex; justify-content: space-between; align-items: center; }
+.ratio-text { color: #8a90a3; font-size: 12px; line-height: 1.9; text-align: center; padding-bottom: 6px; }
+</style>
