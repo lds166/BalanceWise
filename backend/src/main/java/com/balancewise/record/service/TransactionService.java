@@ -128,4 +128,55 @@ public class TransactionService extends ServiceImpl<TransactionRecordMapper, Tra
         applyBalance(accounts[0], accounts[1], amount);
         return r;
     }
+
+    protected TransactionRecord owned(Long userId, Long id) {
+        TransactionRecord r = getById(id);
+        if (r == null || !r.getUserId().equals(userId) || r.getIsDeleted() == 1) {
+            throw new BizException("流水不存在");
+        }
+        return r;
+    }
+
+    /**
+     * 编辑流水（规格 7.2）：事务内两步法——旧记录反向冲销（旧 from 加回、旧 to 减回），
+     * 新记录按新值入账。天然支持换账户、变更类型（expense↔income↔transfer）。
+     * source/externalId/importBatchId 保持不变（导入溯源信息不可因编辑丢失）。
+     */
+    @Transactional
+    public TransactionRecord update(Long userId, Long id, TransactionRequest req) {
+        TransactionRecord old = owned(userId, id);
+        Long[] accounts = resolveAccounts(userId, req);
+        validateCategory(userId, req.getType(), req.getCategoryId());
+        BigDecimal amount = normalizeAmount(req);
+
+        // 旧记录反向冲销
+        applyBalance(old.getFromAccountId(), old.getToAccountId(), old.getAmount().negate());
+
+        old.setType(req.getType());
+        old.setFromAccountId(accounts[0]);
+        old.setToAccountId(accounts[1]);
+        old.setAmount(amount);
+        old.setCategoryId("transfer".equals(req.getType()) ? null : req.getCategoryId());
+        if (req.getOccurredAt() != null) {
+            old.setOccurredAt(req.getOccurredAt());
+        }
+        old.setCounterparty(req.getCounterparty());
+        old.setItem(req.getItem());
+        updateById(old);
+
+        // 新记录入账
+        applyBalance(accounts[0], accounts[1], amount);
+        return old;
+    }
+
+    /**
+     * 删除流水（规格 7.3）：事务内反向冲销余额 → is_deleted=1（软删除，可追溯）。
+     */
+    @Transactional
+    public void delete(Long userId, Long id) {
+        TransactionRecord r = owned(userId, id);
+        applyBalance(r.getFromAccountId(), r.getToAccountId(), r.getAmount().negate());
+        r.setIsDeleted(1);
+        updateById(r);
+    }
 }

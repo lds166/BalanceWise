@@ -157,4 +157,79 @@ class TransactionServiceTest {
                 () -> transactionService.create(2L, req("expense", mine.getId(), null, "10.00", null)));
         assertEquals("支出账户不存在", e.getMessage());
     }
+
+    @Test
+    void editChangeAccountReversesOldAndAppliesNew() {
+        Account a = acc("卡A", "asset", "debit_card", "1000.00");
+        Account b = acc("卡B", "asset", "debit_card", "500.00");
+        TransactionRecord r = transactionService.create(1L,
+                req("expense", a.getId(), null, "200.00", null));
+        // 编辑：账户从 A 换到 B
+        transactionService.update(1L, r.getId(), req("expense", b.getId(), null, "200.00", null));
+        assertEquals(0, new BigDecimal("1000.00").compareTo(balanceOf(a.getId())));
+        assertEquals(0, new BigDecimal("300.00").compareTo(balanceOf(b.getId())));
+    }
+
+    @Test
+    void editChangeAmountAndType() {
+        Account a = acc("卡A", "asset", "debit_card", "1000.00");
+        Account b = acc("卡B", "asset", "debit_card", "0.00");
+        TransactionRecord r = transactionService.create(1L,
+                req("expense", a.getId(), null, "200.00", null));
+        // 类型 expense → income，账户从 A 换到 B，金额 200 → 300
+        TransactionRecord updated = transactionService.update(1L, r.getId(),
+                req("income", null, b.getId(), "300.00", null));
+        assertEquals("income", updated.getType());
+        assertEquals(0, new BigDecimal("1000.00").compareTo(balanceOf(a.getId()))); // 冲销加回：800 + 200
+        assertEquals(0, new BigDecimal("300.00").compareTo(balanceOf(b.getId())));
+    }
+
+    @Test
+    void deleteReversesBalanceAndSoftDeletes() {
+        Account a = acc("卡A", "asset", "debit_card", "1000.00");
+        TransactionRecord r = transactionService.create(1L,
+                req("expense", a.getId(), null, "200.00", null));
+        transactionService.delete(1L, r.getId());
+        assertEquals(0, new BigDecimal("1000.00").compareTo(balanceOf(a.getId())));
+        TransactionRecord after = transactionService.getById(r.getId());
+        assertEquals(1, after.getIsDeleted());
+    }
+
+    @Test
+    void deleteTransferReversesBothAccounts() {
+        Account a = acc("卡A", "asset", "debit_card", "1000.00");
+        Account b = acc("卡B", "asset", "debit_card", "0.00");
+        TransactionRecord r = transactionService.create(1L,
+                req("transfer", a.getId(), b.getId(), "400.00", null));
+        transactionService.delete(1L, r.getId());
+        assertEquals(0, new BigDecimal("1000.00").compareTo(balanceOf(a.getId())));
+        assertEquals(0, BigDecimal.ZERO.compareTo(balanceOf(b.getId())));
+    }
+
+    @Test
+    void cannotEditOrDeleteOtherUsersRecord() {
+        Account a = acc("我的卡", "asset", "debit_card", "1000.00");
+        TransactionRecord r = transactionService.create(1L,
+                req("expense", a.getId(), null, "200.00", null));
+        BizException e1 = assertThrows(BizException.class,
+                () -> transactionService.update(2L, r.getId(), req("expense", a.getId(), null, "1.00", null)));
+        assertEquals("流水不存在", e1.getMessage());
+        BizException e2 = assertThrows(BizException.class,
+                () -> transactionService.delete(2L, r.getId()));
+        assertEquals("流水不存在", e2.getMessage());
+    }
+
+    @Test
+    void editKeepsSourceAndExternalId() {
+        Account a = acc("卡A", "asset", "debit_card", "1000.00");
+        TransactionRecord r = transactionService.create(1L,
+                req("expense", a.getId(), null, "200.00", null));
+        r.setSource("alipay");
+        r.setExternalId("202610010001");
+        transactionService.updateById(r);
+        transactionService.update(1L, r.getId(), req("expense", a.getId(), null, "250.00", null));
+        TransactionRecord after = transactionService.getById(r.getId());
+        assertEquals("alipay", after.getSource());
+        assertEquals("202610010001", after.getExternalId());
+    }
 }
