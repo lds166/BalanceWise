@@ -6,7 +6,10 @@ import com.balancewise.account.service.AccountService;
 import com.balancewise.category.entity.Category;
 import com.balancewise.category.mapper.CategoryMapper;
 import com.balancewise.common.BizException;
+import com.balancewise.common.PageResult;
+import com.balancewise.record.dto.TransactionQuery;
 import com.balancewise.record.dto.TransactionRequest;
+import com.balancewise.record.vo.TransactionVo;
 import com.balancewise.record.entity.TransactionRecord;
 import com.balancewise.record.service.TransactionService;
 import org.junit.jupiter.api.Test;
@@ -16,6 +19,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -33,13 +37,17 @@ class TransactionServiceTest {
     private CategoryMapper categoryMapper;
 
     private Account acc(String name, String type, String subType, String balance) {
+        return acc(1L, name, type, subType, balance);
+    }
+
+    private Account acc(Long userId, String name, String type, String subType, String balance) {
         AccountRequest r = new AccountRequest();
         r.setName(name);
         r.setType(type);
         r.setSubType(subType);
         r.setInitialBalance(new BigDecimal(balance));
         r.setRemark("");
-        return accountService.create(1L, r);
+        return accountService.create(userId, r);
     }
 
     private Category cat(String name, String kind, Long parentId) {
@@ -231,5 +239,66 @@ class TransactionServiceTest {
         TransactionRecord after = transactionService.getById(r.getId());
         assertEquals("alipay", after.getSource());
         assertEquals("202610010001", after.getExternalId());
+    }
+
+    @Test
+    void pageFiltersByTypeAccountAndKeyword() {
+        Account a = acc("卡A", "asset", "debit_card", "10000.00");
+        Account b = acc("卡B", "asset", "cash", "0.00");
+        Category food = cat("餐饮", "expense", null);
+        transactionService.create(1L, req("expense", a.getId(), null, "20.00", food.getId()));
+        TransactionRequest r2 = req("income", null, b.getId(), "3000.00", null);
+        r2.setCounterparty("公司");
+        r2.setItem("十月工资");
+        transactionService.create(1L, r2);
+
+        // 默认：全部、倒序
+        TransactionQuery q = new TransactionQuery();
+        PageResult<TransactionVo> all = transactionService.page(1L, q);
+        assertEquals(2, all.getTotal());
+
+        // 按类型
+        TransactionQuery byType = new TransactionQuery();
+        byType.setType("income");
+        assertEquals(1, transactionService.page(1L, byType).getTotal());
+
+        // 按账户（from 或 to 命中均可）
+        TransactionQuery byAcc = new TransactionQuery();
+        byAcc.setAccountId(a.getId());
+        PageResult<TransactionVo> page = transactionService.page(1L, byAcc);
+        assertEquals(1, page.getTotal());
+        assertEquals("卡A", page.getRecords().get(0).getFromAccountName());
+        assertEquals("餐饮", page.getRecords().get(0).getCategoryName());
+
+        // 按关键字（对方/备注模糊）
+        TransactionQuery byKw = new TransactionQuery();
+        byKw.setKeyword("工资");
+        assertEquals(1, transactionService.page(1L, byKw).getTotal());
+    }
+
+    @Test
+    void pageExcludesSoftDeletedAndOtherUsers() {
+        Account a = acc("卡A", "asset", "debit_card", "1000.00");
+        TransactionRecord r = transactionService.create(1L,
+                req("expense", a.getId(), null, "10.00", null));
+        transactionService.create(1L, req("expense", a.getId(), null, "20.00", null)); // 保留
+        Account a2 = acc(2L, "卡B", "asset", "cash", "0.00");
+        transactionService.create(2L, req("expense", a2.getId(), null, "10.00", null)); // 他人
+        transactionService.delete(1L, r.getId()); // 自己删除一条
+        assertEquals(1, transactionService.page(1L, new TransactionQuery()).getTotal());
+    }
+
+    @Test
+    void pageFiltersByDateRange() {
+        Account a = acc("卡A", "asset", "debit_card", "1000.00");
+        transactionService.create(1L, req("expense", a.getId(), null, "10.00", null)); // 2026-10-01
+        TransactionRequest r2 = req("expense", a.getId(), null, "20.00", null);
+        r2.setOccurredAt(LocalDateTime.of(2026, 11, 15, 8, 0));
+        transactionService.create(1L, r2);
+
+        TransactionQuery q = new TransactionQuery();
+        q.setStart(LocalDate.of(2026, 10, 1));
+        q.setEnd(LocalDate.of(2026, 10, 31));
+        assertEquals(1, transactionService.page(1L, q).getTotal());
     }
 }

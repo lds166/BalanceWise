@@ -1,20 +1,31 @@
 package com.balancewise.record.service;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.balancewise.account.entity.Account;
 import com.balancewise.account.mapper.AccountMapper;
 import com.balancewise.category.entity.Category;
 import com.balancewise.category.mapper.CategoryMapper;
 import com.balancewise.common.BizException;
+import com.balancewise.common.PageResult;
+import com.balancewise.record.dto.TransactionQuery;
 import com.balancewise.record.dto.TransactionRequest;
 import com.balancewise.record.entity.TransactionRecord;
 import com.balancewise.record.mapper.TransactionRecordMapper;
+import com.balancewise.record.vo.TransactionVo;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 public class TransactionService extends ServiceImpl<TransactionRecordMapper, TransactionRecord> {
@@ -178,5 +189,85 @@ public class TransactionService extends ServiceImpl<TransactionRecordMapper, Tra
         applyBalance(r.getFromAccountId(), r.getToAccountId(), r.getAmount().negate());
         r.setIsDeleted(1);
         updateById(r);
+    }
+
+    /**
+     * 构建流水查询条件（分页与导出共用，Task 5 复用）。
+     * 只查 is_deleted=0；账户筛选命中 from 或 to；关键字模糊匹配对方/备注。
+     */
+    protected LambdaQueryWrapper<TransactionRecord> buildWrapper(Long userId, TransactionQuery q) {
+        LambdaQueryWrapper<TransactionRecord> w = new LambdaQueryWrapper<>();
+        w.eq(TransactionRecord::getUserId, userId).eq(TransactionRecord::getIsDeleted, 0);
+        if (q.getType() != null && !q.getType().isBlank()) {
+            w.eq(TransactionRecord::getType, q.getType());
+        }
+        if (q.getAccountId() != null) {
+            w.and(x -> x.eq(TransactionRecord::getFromAccountId, q.getAccountId())
+                    .or().eq(TransactionRecord::getToAccountId, q.getAccountId()));
+        }
+        if (q.getCategoryId() != null) {
+            w.eq(TransactionRecord::getCategoryId, q.getCategoryId());
+        }
+        if (q.getStart() != null) {
+            w.ge(TransactionRecord::getOccurredAt, q.getStart().atStartOfDay());
+        }
+        if (q.getEnd() != null) {
+            w.le(TransactionRecord::getOccurredAt, q.getEnd().atTime(23, 59, 59));
+        }
+        if (q.getKeyword() != null && !q.getKeyword().isBlank()) {
+            w.and(x -> x.like(TransactionRecord::getCounterparty, q.getKeyword())
+                    .or().like(TransactionRecord::getItem, q.getKeyword()));
+        }
+        return w;
+    }
+
+    /** 批量填充账户名与分类名，避免 N+1 */
+    private List<TransactionVo> enrich(List<TransactionRecord> list) {
+        Set<Long> accIds = new HashSet<>();
+        Set<Long> catIds = new HashSet<>();
+        for (TransactionRecord r : list) {
+            if (r.getFromAccountId() != null) accIds.add(r.getFromAccountId());
+            if (r.getToAccountId() != null) accIds.add(r.getToAccountId());
+            if (r.getCategoryId() != null) catIds.add(r.getCategoryId());
+        }
+        Map<Long, Account> accMap = accIds.isEmpty() ? Map.of()
+                : accountMapper.selectBatchIds(accIds).stream()
+                        .collect(Collectors.toMap(Account::getId, a -> a));
+        Map<Long, Category> catMap = catIds.isEmpty() ? Map.of()
+                : categoryMapper.selectBatchIds(catIds).stream()
+                        .collect(Collectors.toMap(Category::getId, c -> c));
+        List<TransactionVo> vos = new ArrayList<>(list.size());
+        for (TransactionRecord r : list) {
+            TransactionVo v = new TransactionVo();
+            v.setId(r.getId());
+            v.setType(r.getType());
+            v.setFromAccountId(r.getFromAccountId());
+            v.setToAccountId(r.getToAccountId());
+            Account fa = r.getFromAccountId() != null ? accMap.get(r.getFromAccountId()) : null;
+            Account ta = r.getToAccountId() != null ? accMap.get(r.getToAccountId()) : null;
+            v.setFromAccountName(fa != null ? fa.getName() : null);
+            v.setToAccountName(ta != null ? ta.getName() : null);
+            v.setAmount(r.getAmount());
+            v.setCategoryId(r.getCategoryId());
+            Category c = r.getCategoryId() != null ? catMap.get(r.getCategoryId()) : null;
+            v.setCategoryName(c != null ? c.getName() : null);
+            v.setOccurredAt(r.getOccurredAt());
+            v.setCounterparty(r.getCounterparty());
+            v.setItem(r.getItem());
+            v.setSource(r.getSource());
+            v.setExternalId(r.getExternalId());
+            v.setImportBatchId(r.getImportBatchId());
+            vos.add(v);
+        }
+        return vos;
+    }
+
+    public PageResult<TransactionVo> page(Long userId, TransactionQuery q) {
+        long pageNo = Math.max(q.getPage(), 1);
+        long size = Math.min(Math.max(q.getSize(), 1), 100);
+        var wrapper = buildWrapper(userId, q);
+        wrapper.orderByDesc(TransactionRecord::getOccurredAt).orderByDesc(TransactionRecord::getId);
+        Page<TransactionRecord> p = page(new Page<>(pageNo, size), wrapper);
+        return new PageResult<>(p.getTotal(), enrich(p.getRecords()));
     }
 }
