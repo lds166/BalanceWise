@@ -6,6 +6,7 @@ import com.balancewise.category.dto.RenameCategoryRequest;
 import com.balancewise.category.entity.Category;
 import com.balancewise.category.service.CategoryService;
 import com.balancewise.category.vo.CategoryVo;
+import com.balancewise.common.BizException;
 import com.balancewise.common.Result;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
@@ -24,7 +25,14 @@ public class CategoryController {
 
     @GetMapping
     public Result<List<CategoryVo>> tree(@CurrentUser Long userId,
-                                         @RequestParam String kind) {
+                                         @RequestParam(required = false) String kind) {
+        // 台账 #1：缺 kind 曾抛 MissingServletRequestParameterException 落入全局 500
+        if (kind == null || kind.isBlank()) {
+            throw new BizException("缺少必填参数：kind");
+        }
+        if (!"expense".equals(kind) && !"income".equals(kind)) {
+            throw new BizException("kind 必须是 income 或 expense");
+        }
         return Result.ok(categoryService.tree(userId, kind));
     }
 

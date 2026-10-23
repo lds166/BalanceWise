@@ -81,11 +81,19 @@ public final class BillParserSupport {
         return cells;
     }
 
-    /** 金额清洗：去 ¥ ￥ 元 千分位逗号与空白 */
+    /**
+     * 金额清洗：去 ¥ ￥ 元 与空白；千分位逗号仅允许标准形式（1,234.50），
+     * 畸形 "1,2" 必须拒绝（台账 #9：曾静默去逗号变成 12）。
+     */
     public static BigDecimal parseAmount(String raw) {
         String s = raw == null ? "" : raw
-                .replace("¥", "").replace("￥", "").replace("元", "")
-                .replace(",", "").trim();
+                .replace("¥", "").replace("￥", "").replace("元", "").trim();
+        if (s.contains(",")) {
+            if (!s.matches("\\d{1,3}(,\\d{3})+(\\.\\d+)?")) {
+                throw new IllegalArgumentException("金额格式不正确：" + raw);
+            }
+            s = s.replace(",", "");
+        }
         return new BigDecimal(s).setScale(2, java.math.RoundingMode.HALF_UP);
     }
 

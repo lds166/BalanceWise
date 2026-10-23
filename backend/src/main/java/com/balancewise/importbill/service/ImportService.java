@@ -198,15 +198,24 @@ public class ImportService {
 
     /**
      * 批次撤销（UC-4.11 / 规格 7.5）：单事务——
-     * 状态机校验（confirmed，幂等：重复撤销拒绝）→ 逐条按当前值反向冲销（编辑过以当前值为准）→ 软删 → 批次置 rolled_back。
-     * 撤销后该文件可重新导入（重复检测只比对未删除记录）。
+     * 条件更新抢占（台账 #10 TOCTOU 加固）：UPDATE ... SET status='rolled_back' WHERE id=? AND status='confirmed'，
+     * 并发双撤销时第二个请求影响 0 行，直接拒绝，绝不二次冲销；
+     * 置状态成功后逐条按当前值反向冲销（编辑过以当前值为准）→ 软删。撤销后可重新导入。
      */
     @Transactional
     public ImportBatch rollback(Long userId, Long batchId) {
         ImportBatch batch = ownedBatch(userId, batchId);
-        if (!"confirmed".equals(batch.getStatus())) {
+        java.time.LocalDateTime now = java.time.LocalDateTime.now();
+        int updated = importBatchMapper.update(null, new com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<ImportBatch>()
+                .eq(ImportBatch::getId, batch.getId())
+                .eq(ImportBatch::getStatus, "confirmed")
+                .set(ImportBatch::getStatus, "rolled_back")
+                .set(ImportBatch::getRolledBackAt, now));
+        if (updated == 0) {
             throw new BizException("批次已撤销，请勿重复操作");
         }
+        batch.setStatus("rolled_back");
+        batch.setRolledBackAt(now);
         List<TransactionRecord> records = transactionRecordMapper.selectList(
                 new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<TransactionRecord>()
                         .eq(TransactionRecord::getImportBatchId, batchId)
@@ -216,9 +225,6 @@ public class ImportService {
             r.setIsDeleted(1);
             transactionRecordMapper.updateById(r);
         }
-        batch.setStatus("rolled_back");
-        batch.setRolledBackAt(java.time.LocalDateTime.now());
-        importBatchMapper.updateById(batch);
         return batch;
     }
 

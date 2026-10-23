@@ -379,4 +379,19 @@ class TransactionServiceTest {
                 () -> transactionService.delete(1L, r.getId()));
         assertEquals("流水不存在", e.getMessage());
     }
+
+    @Test
+    void pageAccountFilterHitsToSide() {
+        // 台账 #5：账户筛选须命中 to 侧（转入账户），此前仅有 from 侧用例
+        Account a = acc("卡A", "asset", "debit_card", "1000.00");
+        Account b = acc("卡B", "asset", "cash", "0.00");
+        transactionService.create(1L, req("income", null, b.getId(), "100.00", null));
+        transactionService.create(1L, req("expense", a.getId(), null, "50.00", null));
+        transactionService.create(1L, req("transfer", a.getId(), b.getId(), "30.00", null));
+
+        TransactionQuery q = new TransactionQuery();
+        q.setAccountId(b.getId());
+        var page = transactionService.page(1L, q);
+        assertEquals(2, page.getTotal()); // 收入的 to + 转账的 to 都命中
+    }
 }

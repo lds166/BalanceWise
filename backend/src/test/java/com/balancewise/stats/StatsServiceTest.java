@@ -361,4 +361,19 @@ class StatsServiceTest {
         assertEquals(0, new BigDecimal("900.00").compareTo(vo.getPoints().get(0).getNetWorth()));
         assertEquals(0, new BigDecimal("850.00").compareTo(vo.getPoints().get(1).getNetWorth()));
     }
+
+    @Test
+    void monthBucketIncludesLastDayTransactions() {
+        // 台账 #11：落在月桶最后一日（9-30 23:59:59）的流水必须计入该月桶（排他上界 < 次日 00:00）
+        Account a = acc("卡A", "asset", "debit_card", "1000.00");
+        txn("expense", a.getId(), null, "66.00", LocalDateTime.of(2026, 9, 30, 23, 59, 59));
+        txn("expense", a.getId(), null, "10.00", LocalDateTime.of(2026, 10, 1, 0, 0, 0));
+
+        StatsTrendVo vo = statsService.trend(1L, trendQuery("month", null,
+                LocalDate.of(2026, 9, 1), LocalDate.of(2026, 10, 31)));
+        assertEquals(2, vo.getPoints().size());
+        assertEquals("2026-09", vo.getPoints().get(0).getLabel());
+        assertEquals(0, new BigDecimal("66.00").compareTo(vo.getPoints().get(0).getExpense()));
+        assertEquals(0, new BigDecimal("10.00").compareTo(vo.getPoints().get(1).getExpense()));
+    }
 }

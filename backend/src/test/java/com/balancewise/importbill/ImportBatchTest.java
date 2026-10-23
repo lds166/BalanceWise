@@ -31,6 +31,8 @@ class ImportBatchTest {
     private ImportService importService;
     @Autowired
     private AccountService accountService;
+    @Autowired
+    private com.balancewise.importbill.mapper.ImportBatchMapper importBatchMapper;
 
     private Long confirmedBatchWithOneExpense() {
         AccountRequest r = new AccountRequest();
@@ -121,5 +123,24 @@ class ImportBatchTest {
         // 余额再次扣减 100（重导生效）
         assertEquals(0, new BigDecimal("-100.00").compareTo(
                 accountService.getById(cash.getId()).getBalance()));
+    }
+
+    @Test
+    void rollbackSkipsReverseWhenStatusAlreadyRolledBack() {
+        // 台账 #10 守护：并发赢家已把状态置 rolled_back 后，第二个请求必须拒绝且绝不二次冲销
+        Long batchId = confirmedBatchWithOneExpense();
+        Account cash = accountService.getOne(new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<Account>()
+                .eq(Account::getUserId, 1L).eq(Account::getName, "现金"));
+        // 模拟并发赢家提交：状态已是 rolled_back（余额已由赢家冲销回 0）
+        ImportBatch winner = importBatchMapper.selectById(batchId);
+        winner.setStatus("rolled_back");
+        importBatchMapper.updateById(winner);
+        accountService.getBaseMapper().update(null, new com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<Account>()
+                .eq(Account::getId, cash.getId())
+                .setSql("balance = 0.00"));
+
+        BizException e = assertThrows(BizException.class, () -> importService.rollback(1L, batchId));
+        assertTrue(e.getMessage().contains("已撤销"));
+        assertEquals(0, BigDecimal.ZERO.compareTo(accountService.getById(cash.getId()).getBalance()));
     }
 }

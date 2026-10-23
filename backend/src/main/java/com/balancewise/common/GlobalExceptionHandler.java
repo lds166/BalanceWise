@@ -44,6 +44,13 @@ public class GlobalExceptionHandler {
         return Result.fail(400, "数据已存在，请勿重复提交");
     }
 
+    // 缺必填请求参数（@RequestParam 未标 required=false 时）从 500 转为友好 400
+    @ExceptionHandler(org.springframework.web.bind.MissingServletRequestParameterException.class)
+    public Result<Void> handleMissingParam(
+            org.springframework.web.bind.MissingServletRequestParameterException e) {
+        return Result.fail(400, "缺少必填参数：" + e.getParameterName());
+    }
+
     @ExceptionHandler(Exception.class)
     public Result<Void> handleOther(Exception e) {
         log.error("unexpected error", e);
