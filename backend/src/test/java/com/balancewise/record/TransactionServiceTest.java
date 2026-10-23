@@ -1,0 +1,160 @@
+package com.balancewise.record;
+
+import com.balancewise.account.dto.AccountRequest;
+import com.balancewise.account.entity.Account;
+import com.balancewise.account.service.AccountService;
+import com.balancewise.category.entity.Category;
+import com.balancewise.category.mapper.CategoryMapper;
+import com.balancewise.common.BizException;
+import com.balancewise.record.dto.TransactionRequest;
+import com.balancewise.record.entity.TransactionRecord;
+import com.balancewise.record.service.TransactionService;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+@SpringBootTest
+@ActiveProfiles("test")
+@Transactional
+class TransactionServiceTest {
+
+    @Autowired
+    private TransactionService transactionService;
+    @Autowired
+    private AccountService accountService;
+    @Autowired
+    private CategoryMapper categoryMapper;
+
+    private Account acc(String name, String type, String subType, String balance) {
+        AccountRequest r = new AccountRequest();
+        r.setName(name);
+        r.setType(type);
+        r.setSubType(subType);
+        r.setInitialBalance(new BigDecimal(balance));
+        r.setRemark("");
+        return accountService.create(1L, r);
+    }
+
+    private Category cat(String name, String kind, Long parentId) {
+        Category c = new Category();
+        c.setUserId(1L);
+        c.setName(name);
+        c.setKind(kind);
+        c.setParentId(parentId);
+        c.setIsSystem(0);
+        categoryMapper.insert(c);
+        return c;
+    }
+
+    private TransactionRequest req(String type, Long from, Long to, String amount, Long categoryId) {
+        TransactionRequest r = new TransactionRequest();
+        r.setType(type);
+        r.setFromAccountId(from);
+        r.setToAccountId(to);
+        r.setAmount(new BigDecimal(amount));
+        r.setCategoryId(categoryId);
+        r.setOccurredAt(LocalDateTime.of(2026, 10, 1, 12, 0));
+        return r;
+    }
+
+    private BigDecimal balanceOf(Long accountId) {
+        return accountService.getById(accountId).getBalance();
+    }
+
+    @Test
+    void expenseReducesAssetBalance() {
+        Account a = acc("储蓄卡", "asset", "debit_card", "1000.00");
+        transactionService.create(1L, req("expense", a.getId(), null, "200.00", null));
+        assertEquals(0, new BigDecimal("800.00").compareTo(balanceOf(a.getId())));
+    }
+
+    @Test
+    void incomeIncreasesAssetBalance() {
+        Account a = acc("钱包", "asset", "cash", "0.00");
+        transactionService.create(1L, req("income", null, a.getId(), "3500.00", null));
+        assertEquals(0, new BigDecimal("3500.00").compareTo(balanceOf(a.getId())));
+    }
+
+    @Test
+    void transferMovesBetweenTwoAccounts() {
+        Account from = acc("卡A", "asset", "debit_card", "500.00");
+        Account to = acc("卡B", "asset", "debit_card", "100.00");
+        TransactionRecord r = transactionService.create(1L,
+                req("transfer", from.getId(), to.getId(), "150.00", null));
+        assertNull(r.getCategoryId());
+        assertEquals(0, new BigDecimal("350.00").compareTo(balanceOf(from.getId())));
+        assertEquals(0, new BigDecimal("250.00").compareTo(balanceOf(to.getId())));
+    }
+
+    @Test
+    void expenseOnLiabilityMakesDebtMoreNegative() {
+        // 负债消费：信用卡欠款 5000，刷卡花 1000 → -6000
+        Account card = acc("信用卡", "liability", "credit_card", "5000.00");
+        transactionService.create(1L, req("expense", card.getId(), null, "1000.00", null));
+        assertEquals(0, new BigDecimal("-6000.00").compareTo(balanceOf(card.getId())));
+    }
+
+    @Test
+    void incomeOnLiabilityReducesDebt() {
+        // 还款：向信用卡转入 2000 → 欠款从 -5000 变为 -3000
+        Account card = acc("信用卡", "liability", "credit_card", "5000.00");
+        transactionService.create(1L, req("income", null, card.getId(), "2000.00", null));
+        assertEquals(0, new BigDecimal("-3000.00").compareTo(balanceOf(card.getId())));
+    }
+
+    @Test
+    void transferFromAssetToLiabilityIsRepayment() {
+        // 储蓄卡还花呗：from 减、to 加，负债余额向 0 收敛
+        Account card = acc("储蓄卡", "asset", "debit_card", "10000.00");
+        Account huabei = acc("花呗", "liability", "huabei", "500.00");
+        transactionService.create(1L, req("transfer", card.getId(), huabei.getId(), "500.00", null));
+        assertEquals(0, new BigDecimal("9500.00").compareTo(balanceOf(card.getId())));
+        assertEquals(0, BigDecimal.ZERO.compareTo(balanceOf(huabei.getId())));
+    }
+
+    @Test
+    void transferSameAccountRejected() {
+        Account a = acc("卡A", "asset", "debit_card", "100.00");
+        BizException e = assertThrows(BizException.class,
+                () -> transactionService.create(1L, req("transfer", a.getId(), a.getId(), "10.00", null)));
+        assertEquals("转出与转入账户不能相同", e.getMessage());
+    }
+
+    @Test
+    void archivedAccountRejected() {
+        Account a = acc("旧卡", "asset", "debit_card", "100.00");
+        accountService.archive(1L, a.getId(), true);
+        BizException e = assertThrows(BizException.class,
+                () -> transactionService.create(1L, req("expense", a.getId(), null, "10.00", null)));
+        assertTrue(e.getMessage().contains("已归档"));
+    }
+
+    @Test
+    void categoryKindMustMatchType() {
+        Account a = acc("钱包", "asset", "cash", "100.00");
+        Category expenseCat = cat("餐饮", "expense", null);
+        Category incomeCat = cat("工资", "income", null);
+        // 支出用收入分类 → 拒绝
+        assertThrows(BizException.class,
+                () -> transactionService.create(1L, req("expense", a.getId(), null, "10.00", incomeCat.getId())));
+        // 支出用支出分类 → 通过
+        TransactionRecord r = transactionService.create(1L,
+                req("expense", a.getId(), null, "10.00", expenseCat.getId()));
+        assertEquals(expenseCat.getId(), r.getCategoryId());
+    }
+
+    @Test
+    void cannotUseOtherUsersAccount() {
+        Account mine = acc("我的卡", "asset", "debit_card", "100.00");
+        BizException e = assertThrows(BizException.class,
+                () -> transactionService.create(2L, req("expense", mine.getId(), null, "10.00", null)));
+        assertEquals("支出账户不存在", e.getMessage());
+    }
+}
