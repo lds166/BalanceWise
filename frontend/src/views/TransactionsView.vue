@@ -91,7 +91,7 @@
         </el-form-item>
         <el-form-item v-if="dlg.form.type !== 'transfer'" label="分类">
           <el-cascader
-            v-model="dlg.form.categoryId" :options="categoryOptions" :props="cascaderProps"
+            v-model="dlg.form.categoryId" :options="dlgCategoryOptions" :props="cascaderProps"
             filterable clearable placeholder="未分类" style="width: 100%"
           />
         </el-form-item>
@@ -117,7 +117,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import request from '../api/request'
 
@@ -136,6 +136,10 @@ const categoryOptions = computed(() => {
   if (query.type === 'expense') return expenseTree.value
   return [...expenseTree.value, ...incomeTree.value]
 })
+// 编辑对话框的分类选项跟表单类型走
+const dlgCategoryOptions = computed(() =>
+  dlg.form.type === 'income' ? incomeTree.value : expenseTree.value
+)
 
 const TYPE_LABEL = { expense: '支出', income: '收入', transfer: '转账' }
 const SOURCE_LABEL = { manual: '手工', alipay: '支付宝', wechat: '微信', reconcile: '校正' }
@@ -211,6 +215,11 @@ const dlg = reactive({
           amount: null, occurredAt: null, counterparty: '', item: '' },
 })
 
+// 类型变化时清掉不适用的分类
+watch(() => dlg.form.type, () => {
+  dlg.form.categoryId = null
+})
+
 function openEdit(row) {
   Object.assign(dlg, {
     id: row.id, visible: true,
@@ -258,14 +267,22 @@ async function remove(row) {
   await load()
 }
 
+function filenameDate() {
+  const d = new Date()
+  const p = n => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
+}
+
 async function exportCsv() {
   const res = await request.get('/transactions/export', { params: params(), responseType: 'blob' })
-  const url = URL.createObjectURL(new Blob([res], { type: 'text/csv;charset=utf-8' }))
+  const url = URL.createObjectURL(res.data)
   const a = document.createElement('a')
   a.href = url
-  a.download = `transactions_${new Date().toISOString().slice(0, 10)}.csv`
+  a.download = `transactions_${filenameDate()}.csv`
+  document.body.appendChild(a)   // Firefox 需要挂到 DOM
   a.click()
-  URL.revokeObjectURL(url)
+  a.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)  // 延迟释放，避免截断下载
 }
 </script>
 

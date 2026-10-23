@@ -12,6 +12,8 @@ request.interceptors.request.use(config => {
 
 request.interceptors.response.use(
   res => {
+    // 二进制下载（blob）等非 JSON 响应直接放行，由调用方处理
+    if (res.config.responseType === 'blob') return res
     const body = res.data
     if (body && body.code === 0) return body
     ElMessage.error((body && body.message) || '请求失败')
