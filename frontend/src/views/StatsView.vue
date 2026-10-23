@@ -192,6 +192,7 @@ async function loadTrend() {
 }
 
 async function loadCategory() {
+  drill.value = null // 切换支出/收入时重置下钻态，避免渲染旧类型的二级数据
   const res = await request.get('/stats/category', {
     params: { ...baseParams.value, type: catType.value },
   })
