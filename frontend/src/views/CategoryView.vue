@@ -1,4 +1,5 @@
 <template>
+  <div class="bw-page">
   <el-row :gutter="16">
     <el-col :span="12">
       <el-card>
@@ -57,6 +58,7 @@
       </el-card>
     </el-col>
   </el-row>
+  </div>
 
   <el-dialog v-model="dlg.visible" :title="dlg.title" width="400px">
     <el-input v-model="dlg.name" maxlength="32" placeholder="分类名称" />
@@ -133,9 +135,9 @@ onMounted(load)
 .cat-group { margin-bottom: 10px; }
 .cat-parent {
   display: flex; justify-content: space-between; align-items: center;
-  padding: 8px 10px; background: #fafbfd; border-radius: 8px; font-weight: 600;
+  padding: 8px 10px; background: var(--bw-bg); border-radius: 10px; font-weight: 600;
 }
 .cat-children { padding: 6px 0 0 16px; display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; }
-.cat-child { color: #606266; font-size: 13px; }
-.muted { color: #8a90a3; font-size: 12px; }
+.cat-child { color: var(--bw-text-secondary); font-size: 13px; }
+.muted { color: var(--bw-text-secondary); font-size: 12px; }
 </style>

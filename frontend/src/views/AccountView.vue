@@ -1,5 +1,5 @@
 <template>
-  <div>
+  <div class="bw-page">
     <el-row :gutter="16" style="margin-bottom: 16px">
       <el-col :span="8">
         <el-card><div class="stat"><span class="label">净资产</span>
@@ -232,22 +232,22 @@ onMounted(load)
 
 <style scoped>
 .stat { display: flex; flex-direction: column; gap: 6px; }
-.stat .label { color: #8a90a3; font-size: 13px; }
+.stat .label { color: var(--bw-text-secondary); font-size: 13px; }
 .stat .value { font-size: 24px; font-weight: 700; }
-.stat .income { color: #3aa97a; }
-.stat .expense { color: #e8604c; }
+.stat .income { color: var(--bw-income); }
+.stat .expense { color: var(--bw-expense); }
 .card-head { display: flex; justify-content: space-between; align-items: center; }
-.hint { font-size: 12px; color: #8a90a3; line-height: 1.4; }
+.hint { font-size: 12px; color: var(--bw-text-secondary); line-height: 1.4; }
 :deep(.acc-row) {
   display: flex; justify-content: space-between; align-items: center;
-  padding: 12px 4px; border-bottom: 1px solid #f0f1f5;
+  padding: 12px 4px; border-bottom: 1px dashed var(--bw-border);
 }
 :deep(.acc-row:last-child) { border-bottom: none; }
 :deep(.acc-name) { font-weight: 600; }
 :deep(.acc-ops) { display: flex; align-items: center; gap: 10px; }
 :deep(.acc-balance) { font-variant-numeric: tabular-nums; font-weight: 600; }
-:deep(.acc-balance.expense) { color: #e8604c; }
+:deep(.acc-balance.expense) { color: var(--bw-expense); }
 .recon-balance { font-weight: 600; font-variant-numeric: tabular-nums; }
-.income { color: #3aa97a; }
-.muted { color: #8a90a3; }
+.income { color: var(--bw-income); }
+.muted { color: var(--bw-text-secondary); }
 </style>

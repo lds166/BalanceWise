@@ -1,6 +1,6 @@
 <template>
-  <div>
-    <el-card style="margin-bottom: 16px">
+  <div class="bw-page">
+    <div class="bw-card" style="margin-bottom: 16px">
       <div class="filters">
         <el-date-picker
           v-model="range" type="daterange" value-format="YYYY-MM-DD"
@@ -23,9 +23,9 @@
         <el-button @click="resetFilters">重置</el-button>
         <el-button @click="exportCsv">导出 CSV</el-button>
       </div>
-    </el-card>
+    </div>
 
-    <el-card>
+    <div class="bw-card">
       <el-table :data="rows" v-loading="loading" style="width: 100%">
         <el-table-column prop="occurredAt" label="时间" width="165" />
         <el-table-column label="类型" width="80">
@@ -68,7 +68,7 @@
         style="margin-top: 12px; justify-content: flex-end"
         @current-change="load" @size-change="search"
       />
-    </el-card>
+    </div>
 
     <el-dialog v-model="dlg.visible" title="编辑流水" width="520px">
       <el-form label-width="90px" @submit.prevent>
@@ -295,6 +295,6 @@ async function exportCsv() {
 
 <style scoped>
 .filters { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
-.amt-expense { color: #e8604c; font-weight: 600; font-variant-numeric: tabular-nums; }
-.amt-income { color: #3aa97a; font-weight: 600; font-variant-numeric: tabular-nums; }
+.amt-expense { color: var(--bw-expense); font-weight: 600; font-variant-numeric: tabular-nums; }
+.amt-income { color: var(--bw-income); font-weight: 600; font-variant-numeric: tabular-nums; }
 </style>

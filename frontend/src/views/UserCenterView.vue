@@ -1,5 +1,5 @@
 <template>
-  <div>
+  <div class="bw-page">
     <el-row :gutter="16">
       <el-col :span="10">
         <el-card shadow="hover">
@@ -38,6 +38,26 @@
         </el-card>
       </el-col>
     </el-row>
+
+    <el-card shadow="hover" style="margin-top: 16px">
+      <template #header><span>🎨 外观主题</span></template>
+      <div class="theme-grid">
+        <button
+          v-for="t in theme.themes"
+          :key="t.id"
+          class="theme-option"
+          :class="{ active: theme.current === t.id }"
+          @click="theme.setTheme(t.id)"
+        >
+          <span class="swatch" :style="{ background: t.dot }" />
+          <span class="theme-meta">
+            <span class="theme-name">{{ t.name }}</span>
+            <span class="theme-desc">{{ t.desc }}</span>
+          </span>
+          <span v-if="theme.current === t.id" class="theme-check">✓ 使用中</span>
+        </button>
+      </div>
+    </el-card>
   </div>
 </template>
 
@@ -47,9 +67,11 @@ import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import request from '../api/request'
 import { useUserStore } from '../stores/user'
+import { useThemeStore } from '../stores/theme'
 
 const router = useRouter()
 const store = useUserStore()
+const theme = useThemeStore()
 
 const nickForm = reactive({ nickname: store.user?.nickname || '', saving: false })
 const pwdForm = reactive({ oldPassword: '', newPassword: '', confirm: '', saving: false })
@@ -100,5 +122,20 @@ async function changePassword() {
 </script>
 
 <style scoped>
-.hint { font-size: 12px; color: #8a90a3; }
+.hint { font-size: 12px; color: var(--bw-text-secondary); }
+
+.theme-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+.theme-option {
+  display: flex; align-items: center; gap: 12px; text-align: left;
+  padding: 14px; border-radius: 14px; cursor: pointer;
+  border: 2px solid var(--bw-border); background: var(--bw-bg);
+  font-family: inherit; transition: all 0.15s ease;
+}
+.theme-option:hover { border-color: var(--bw-primary); transform: translateY(-1px); }
+.theme-option.active { border-color: var(--bw-primary); background: var(--bw-primary-soft); }
+.swatch { width: 30px; height: 30px; border-radius: 10px; flex: none; box-shadow: inset 0 0 0 2px rgba(255,255,255,0.35); }
+.theme-meta { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.theme-name { font-weight: 700; font-size: 14px; color: var(--bw-text); }
+.theme-desc { font-size: 12px; color: var(--bw-text-secondary); }
+.theme-check { margin-left: auto; color: var(--bw-primary); font-size: 12px; font-weight: 600; white-space: nowrap; }
 </style>

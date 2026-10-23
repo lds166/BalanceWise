@@ -1,6 +1,6 @@
 <template>
-  <div>
-    <el-card shadow="never" style="margin-bottom: 16px">
+  <div class="bw-page">
+    <div class="bw-card" style="margin-bottom: 16px">
       <div class="filter-bar">
         <el-radio-group v-model="preset" @change="loadAll">
           <el-radio-button value="month">本月</el-radio-button>
@@ -21,7 +21,7 @@
           <el-radio-button value="day">按日</el-radio-button>
         </el-radio-group>
       </div>
-    </el-card>
+    </div>
 
     <el-row :gutter="16">
       <el-col :span="8">
@@ -95,6 +95,7 @@
 import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import request from '../api/request'
 import { useChart } from '../composables/useChart'
+import { themeColor } from '../utils/themeColor'
 
 // ===== 多维筛选（UC-5.7）=====
 const preset = ref('month')
@@ -183,9 +184,12 @@ async function loadTrend() {
     xAxis: { type: 'category', data: pts.map(p => p.label) },
     yAxis: { type: 'value' },
     series: [
-      { name: '收入', type: 'line', smooth: true, data: pts.map(p => Number(p.income)) },
-      { name: '支出', type: 'line', smooth: true, data: pts.map(p => Number(p.expense)) },
-      { name: '结余', type: 'line', smooth: true, data: pts.map(p => Number(p.balance)) },
+      { name: '收入', type: 'line', smooth: true, lineStyle: { width: 3 }, symbol: 'circle', symbolSize: 7,
+        itemStyle: { color: themeColor('--bw-income', '#3fa37a') }, data: pts.map(p => Number(p.income)) },
+      { name: '支出', type: 'line', smooth: true, lineStyle: { width: 3 }, symbol: 'circle', symbolSize: 7,
+        itemStyle: { color: themeColor('--bw-expense', '#e8684a') }, data: pts.map(p => Number(p.expense)) },
+      { name: '结余', type: 'line', smooth: true, lineStyle: { width: 2, type: 'dashed' }, symbol: 'none',
+        itemStyle: { color: themeColor('--bw-primary', '#f28c38') }, data: pts.map(p => Number(p.balance)) },
     ],
   })
 }
@@ -199,15 +203,19 @@ async function loadCategory() {
   renderPie()
 }
 
+const PIE_PALETTE = ['#f28c38', '#f6b352', '#e8684a', '#3fa37a', '#c9a3e0', '#6ba8d8', '#e2b96f', '#8fbf7f', '#d87f9a', '#7f9fd8']
+
 function renderPie() {
   const source = drill.value ? drill.value.children : catItems.value
   if (!source.length) return
   setPie({
+    color: PIE_PALETTE,
     tooltip: { trigger: 'item', valueFormatter: v => money(v) },
     series: [{
       type: 'pie',
       radius: ['35%', '60%'],
       center: ['50%', '50%'],
+      itemStyle: { borderRadius: 6, borderColor: themeColor('--bw-card', '#ffffff'), borderWidth: 3 },
       data: source.map(i => ({ name: i.name, value: Number(i.amount) })),
       label: { formatter: '{b}\n{d}%' },
     }],
@@ -230,7 +238,7 @@ function renderAccountsOverview() {
       type: 'bar',
       barMaxWidth: 22,
       data: items.map(a => Number(a.balance)),
-      itemStyle: { color: p => (p.value < 0 ? '#e05252' : '#4e63f2') },
+      itemStyle: { color: p => (p.value < 0 ? themeColor('--bw-expense', '#e8684a') : themeColor('--bw-primary', '#f28c38')), borderRadius: [0, 6, 6, 0] },
       label: { show: true, position: 'right', fontSize: 11, formatter: p => money(p.value) },
     }],
   })
@@ -242,8 +250,8 @@ function renderAccountsOverview() {
       radius: ['35%', '60%'],
       center: ['50%', '42%'],
       data: [
-        { name: '资产', value: Number(accSummary.assetTotal), itemStyle: { color: '#4e63f2' } },
-        { name: '负债', value: Number(accSummary.liabilityTotal), itemStyle: { color: '#e05252' } },
+        { name: '资产', value: Number(accSummary.assetTotal), itemStyle: { color: themeColor('--bw-income', '#3fa37a') } },
+        { name: '负债', value: Number(accSummary.liabilityTotal), itemStyle: { color: themeColor('--bw-expense', '#e8684a') } },
       ],
       label: { formatter: '{b}\n{d}%' },
     }],
@@ -254,12 +262,12 @@ function renderAccountsOverview() {
 <style scoped>
 .filter-bar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
 .stat-card { min-height: 96px; }
-.stat-label { color: #8a90a3; font-size: 13px; }
+.stat-label { color: var(--bw-text-secondary); font-size: 13px; }
 .stat-value { font-size: 26px; font-weight: 700; margin-top: 8px; }
-.stat-value.income, .income { color: #2f9e6e; }
-.stat-value.expense, .expense { color: #e05252; }
+.stat-value.income, .income { color: var(--bw-income); }
+.stat-value.expense, .expense { color: var(--bw-expense); }
 .chart.lg { height: 320px; }
 .chart.md { height: 260px; }
 .card-head { display: flex; justify-content: space-between; align-items: center; }
-.ratio-text { color: #8a90a3; font-size: 12px; line-height: 1.9; text-align: center; padding-bottom: 6px; }
+.ratio-text { color: var(--bw-text-secondary); font-size: 12px; line-height: 1.9; text-align: center; padding-bottom: 6px; }
 </style>

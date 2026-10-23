@@ -1,5 +1,5 @@
 <template>
-  <div>
+  <div class="bw-page">
     <el-tabs v-model="tab">
       <el-tab-pane label="导入账单" name="upload">
         <el-card style="max-width: 720px; margin-bottom: 16px">
@@ -274,5 +274,5 @@ async function rollback(row) {
 <style scoped>
 .card-head { display: flex; justify-content: space-between; align-items: center; }
 .acc-cell { display: flex; gap: 6px; }
-.muted { color: #8a90a3; font-size: 12px; }
+.muted { color: var(--bw-text-secondary); font-size: 12px; }
 </style>

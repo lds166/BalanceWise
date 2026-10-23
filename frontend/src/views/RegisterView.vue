@@ -1,10 +1,12 @@
 <template>
   <div class="auth-wrap">
-    <el-card class="auth-card">
+    <button class="theme-corner" title="切换主题" @click="cycleTheme">{{ themeEmoji }}</button>
+
+    <div class="auth-card">
       <div class="brand">
-        <div class="mark">账</div>
+        <div class="logo">🌱</div>
         <h2>创建账号</h2>
-        <p>注册即为您初始化常用收支分类，开箱即用</p>
+        <p>注册即为您备好常用收支分类，开箱就能记</p>
       </div>
       <el-form :model="form" @submit.prevent="submit">
         <el-form-item>
@@ -19,23 +21,37 @@
         <el-form-item>
           <el-input v-model="form.confirmPassword" type="password" placeholder="确认密码" size="large" show-password />
         </el-form-item>
-        <el-button type="primary" size="large" style="width: 100%" :loading="loading" native-type="submit">注 册</el-button>
+        <el-button class="submit" type="primary" size="large" :loading="loading" native-type="submit">
+          注 册
+        </el-button>
       </el-form>
       <div class="links">已有账号？<router-link to="/login">直接登录</router-link></div>
-    </el-card>
+    </div>
+    <div class="foot-emoji" aria-hidden="true">💰 🎉 📈 🧧 💼</div>
   </div>
 </template>
 
 <script setup>
-import { reactive, ref } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useUserStore } from '../stores/user'
+import { useThemeStore } from '../stores/theme'
 
 const router = useRouter()
 const store = useUserStore()
+const theme = useThemeStore()
 const loading = ref(false)
 const form = reactive({ username: '', nickname: '', password: '', confirmPassword: '' })
+
+const THEME_EMOJI = { journal: '🍊', mint: '🌿', morandi: '🌸', night: '🌙' }
+const themeEmoji = computed(() => THEME_EMOJI[theme.current] || '🎨')
+
+function cycleTheme() {
+  const list = theme.themes
+  const idx = list.findIndex(t => t.id === theme.current)
+  theme.setTheme(list[(idx + 1) % list.length].id)
+}
 
 async function submit() {
   if (form.password !== form.confirmPassword) {
@@ -55,17 +71,45 @@ async function submit() {
 
 <style scoped>
 .auth-wrap {
-  min-height: 100vh; display: flex; align-items: center; justify-content: center;
-  background: linear-gradient(135deg, #20264a 0%, #3b4fd1 100%);
+  min-height: 100vh;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  background: var(--bw-bg);
+  position: relative;
+  overflow: hidden;
 }
-.auth-card { width: 400px; border-radius: 16px; }
-.brand { text-align: center; margin-bottom: 24px; }
-.brand .mark {
-  width: 52px; height: 52px; border-radius: 14px; margin: 0 auto 12px; color: #fff;
-  font-size: 26px; display: flex; align-items: center; justify-content: center;
-  background: linear-gradient(135deg, #4e63f2, #7b5cf0);
+.auth-wrap::before, .auth-wrap::after {
+  content: ''; position: absolute; border-radius: 50%; filter: blur(70px); opacity: 0.5;
 }
-.brand h2 { font-size: 20px; }
-.brand p { color: #8a90a3; font-size: 13px; margin-top: 6px; }
-.links { text-align: center; margin-top: 18px; color: #8a90a3; font-size: 13px; }
+.auth-wrap::before { width: 340px; height: 340px; background: var(--bw-primary-soft); top: -80px; right: -80px; }
+.auth-wrap::after { width: 280px; height: 280px; background: var(--bw-income-soft); bottom: -60px; left: -60px; }
+
+.theme-corner {
+  position: absolute; top: 20px; right: 20px; z-index: 5;
+  width: 42px; height: 42px; border-radius: 50%; font-size: 19px;
+  border: 1px solid var(--bw-border); background: var(--bw-card); cursor: pointer;
+  box-shadow: var(--bw-shadow);
+}
+.theme-corner:hover { border-color: var(--bw-primary); }
+
+.auth-card {
+  position: relative; z-index: 1;
+  width: 400px; max-width: calc(100vw - 40px);
+  background: var(--bw-card);
+  border-radius: var(--bw-radius-lg);
+  box-shadow: var(--bw-shadow-hover);
+  padding: 36px 32px 28px;
+}
+.brand { text-align: center; margin-bottom: 26px; }
+.brand .logo {
+  font-size: 40px; line-height: 1;
+  width: 68px; height: 68px; margin: 0 auto 14px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--bw-income-soft); border-radius: 22px;
+}
+.brand h2 { font-size: 22px; margin: 0; color: var(--bw-text); }
+.brand p { color: var(--bw-text-secondary); font-size: 13px; margin-top: 8px; }
+.submit { width: 100%; font-weight: 700; letter-spacing: 6px; border-radius: 999px; margin-top: 4px; }
+.links { text-align: center; margin-top: 20px; color: var(--bw-text-secondary); font-size: 13px; }
+.links a { color: var(--bw-primary); text-decoration: none; font-weight: 600; }
+.foot-emoji { position: relative; z-index: 1; margin-top: 26px; font-size: 20px; letter-spacing: 10px; opacity: 0.75; }
 </style>
