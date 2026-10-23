@@ -117,7 +117,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import request from '../api/request'
 
@@ -215,12 +215,17 @@ const dlg = reactive({
           amount: null, occurredAt: null, counterparty: '', item: '' },
 })
 
+// 打开编辑预填时标记，避免类型 watch 误清预填的分类
+let openingEdit = false
+
 // 类型变化时清掉不适用的分类
 watch(() => dlg.form.type, () => {
+  if (openingEdit) return
   dlg.form.categoryId = null
 })
 
 function openEdit(row) {
+  openingEdit = true
   Object.assign(dlg, {
     id: row.id, visible: true,
     form: {
@@ -234,6 +239,8 @@ function openEdit(row) {
       item: row.item || '',
     },
   })
+  // watch 默认 flush: 'pre'，先于 nextTick 回调执行，复位前标志仍有效
+  nextTick(() => { openingEdit = false })
 }
 
 async function saveEdit() {
