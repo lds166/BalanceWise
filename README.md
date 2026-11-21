@@ -36,4 +36,5 @@
 
 需求与设计规格：`docs/superpowers/specs/2026-10-21-balancewise-design.md`
 实施计划：`docs/superpowers/plans/2026-10-22-phase1-foundation.md`
+数据库初始化：`sql/init-mysql.sql`（MySQL 全量；H2 测试专用最小结构见 `backend/src/main/resources/schema.sql`）
 界面原型：`prototype/`（纯静态可点击原型）
