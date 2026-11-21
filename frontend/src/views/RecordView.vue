@@ -77,11 +77,9 @@
 
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import request from '../api/request'
 
-const router = useRouter()
 const accounts = ref([])
 const expenseTree = ref([])
 const incomeTree = ref([])
@@ -95,7 +93,7 @@ const types = [
 
 const empty = () => ({
   type: 'expense', fromAccountId: null, toAccountId: null,
-  categoryId: null, amount: null, occurredAt: null,
+  categoryId: null, amount: null, occurredAt: new Date(),
   counterparty: '', item: '',
 })
 const form = reactive(empty())
@@ -144,8 +142,12 @@ async function save() {
       fromAccountId: form.type === 'income' ? null : form.fromAccountId,
       toAccountId: form.type === 'expense' ? null : form.toAccountId,
     })
-    ElMessage.success('已记账 🎉')
-    router.push('/transactions')
+    ElMessage.success('已记账 🎉 可继续记下一笔')
+    // 连续记账场景：留在本页，保留类型/账户/分类，仅清空金额与备注，时间顺延为当前
+    form.amount = null
+    form.counterparty = ''
+    form.item = ''
+    form.occurredAt = new Date()
   } finally {
     saving.value = false
   }

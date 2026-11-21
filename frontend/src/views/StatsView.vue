@@ -50,7 +50,8 @@
       <el-col :span="16">
         <el-card shadow="hover">
           <template #header><span>收支趋势（{{ granularity === 'month' ? '按月' : '按日' }}）</span></template>
-          <div ref="trendEl" class="chart lg" />
+          <div v-show="!trendEmpty" ref="trendEl" class="chart lg" />
+          <el-empty v-if="trendEmpty" description="该区间暂无收支数据" :image-size="70" />
         </el-card>
       </el-col>
       <el-col :span="8">
@@ -64,6 +65,7 @@
               <el-button v-if="drill" size="small" text type="primary" @click="drill = null">← 返回一级</el-button>
             </div>
           </template>
+          <div v-show="catItems.length" class="drill-hint">提示：点击扇区可下钻查看子分类</div>
           <div v-show="catItems.length" ref="pieEl" class="chart lg" />
           <el-empty v-if="!catItems.length" description="该区间暂无数据" :image-size="70" />
         </el-card>
@@ -73,14 +75,16 @@
     <el-row :gutter="16" style="margin-top: 16px">
       <el-col :span="16">
         <el-card shadow="hover">
-          <template #header><span>账户余额对比</span></template>
-          <div ref="barEl" class="chart md" />
+          <template #header><span>账户余额对比<span class="snap-note">（当前快照，不随筛选变化）</span></span></template>
+          <div v-show="accSummary.accounts.length" ref="barEl" class="chart md" />
+          <el-empty v-if="!accSummary.accounts.length" description="还没有账户数据" :image-size="70" />
         </el-card>
       </el-col>
       <el-col :span="8">
         <el-card shadow="hover">
           <template #header><span>资产 / 负债占比</span></template>
-          <div ref="ratioEl" class="chart md" />
+          <div v-show="!ratioEmpty" ref="ratioEl" class="chart md" />
+          <el-empty v-if="ratioEmpty" description="还没有账户数据，先去建一个账户吧" :image-size="70" />
           <div class="ratio-text">
             净资产 ¥ {{ money(accSummary.netWorth) }}<br>
             资产合计 ¥ {{ money(accSummary.assetTotal) }} ／ 负债合计 ¥ {{ money(accSummary.liabilityTotal) }}
@@ -109,11 +113,16 @@ const catType = ref('expense')
 const catItems = ref([])
 const drill = ref(null)
 const accSummary = reactive({ netWorth: 0, assetTotal: 0, liabilityTotal: 0, accounts: [] })
+// 趋势图空态：区间补零后收支仍全为 0 时，用空态替代空坐标轴
+const trendPoints = ref([])
+const trendEmpty = computed(() => trendPoints.value.every(p => !Number(p.income) && !Number(p.expense)))
+// 资产/负债占比空态：资产与负债合计均为 0（无账户）时展示引导
+const ratioEmpty = computed(() => !Number(accSummary.assetTotal) && !Number(accSummary.liabilityTotal))
 
-const { el: trendEl, setOption: setTrend } = useChart()
+const { el: trendEl, setOption: setTrend, resize: resizeTrend } = useChart()
 const { el: pieEl, setOption: setPie, on: onPie, resize: resizePie } = useChart()
-const { el: barEl, setOption: setBar } = useChart()
-const { el: ratioEl, setOption: setRatio } = useChart()
+const { el: barEl, setOption: setBar, resize: resizeBar } = useChart()
+const { el: ratioEl, setOption: setRatio, resize: resizeRatio } = useChart()
 
 const money = v => Number(v || 0).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const pad = n => String(n).padStart(2, '0')
@@ -177,6 +186,8 @@ async function loadTrend() {
     params: { ...baseParams.value, groupBy: granularity.value },
   })
   const pts = res.data.points
+  trendPoints.value = pts
+  if (trendEmpty.value) return
   setTrend({
     tooltip: { trigger: 'axis', valueFormatter: v => money(v) },
     legend: { data: ['收入', '支出', '结余'], bottom: 0 },
@@ -192,6 +203,8 @@ async function loadTrend() {
         itemStyle: { color: themeColor('--bw-primary', '#f28c38') }, data: pts.map(p => Number(p.balance)) },
     ],
   })
+  // 空态→有数据翻转时容器由隐藏转可见，DOM 更新后 resize 保证尺寸正确
+  nextTick(resizeTrend)
 }
 
 async function loadCategory() {
@@ -242,6 +255,9 @@ function renderAccountsOverview() {
       label: { show: true, position: 'right', fontSize: 11, formatter: p => money(p.value) },
     }],
   })
+  // 账户数据到达使 v-show 翻转可见后，DOM 更新后 resize 保证尺寸正确
+  nextTick(() => { resizeBar(); if (!ratioEmpty.value) resizeRatio() })
+  if (ratioEmpty.value) return
   setRatio({
     tooltip: { trigger: 'item', valueFormatter: v => money(v) },
     legend: { bottom: 0 },
@@ -270,4 +286,6 @@ function renderAccountsOverview() {
 .chart.md { height: 260px; }
 .card-head { display: flex; justify-content: space-between; align-items: center; }
 .ratio-text { color: var(--bw-text-secondary); font-size: 12px; line-height: 1.9; text-align: center; padding-bottom: 6px; }
+.snap-note { color: var(--bw-text-secondary); font-size: 12px; }
+.drill-hint { color: var(--bw-text-secondary); font-size: 12px; margin-bottom: 6px; }
 </style>

@@ -1,5 +1,5 @@
 <template>
-  <div class="bw-page">
+  <div class="bw-page" v-loading="loading">
     <!-- 净资产问候大卡 -->
     <section class="hero">
       <div>
@@ -34,7 +34,8 @@
     <div class="chart-grid">
       <div class="bw-card">
         <div class="card-title">📈 近 6 个月收支趋势</div>
-        <div ref="trendEl" class="chart trend" />
+        <div v-show="!trendEmpty" ref="trendEl" class="chart trend" />
+        <el-empty v-if="trendEmpty" description="记几笔流水，这里就会出现 6 个月的趋势" :image-size="70" />
       </div>
       <div class="bw-card">
         <div class="card-title">🍩 本月支出构成</div>
@@ -77,13 +78,15 @@ import { themeColor } from '../utils/themeColor'
 
 const router = useRouter()
 const store = useUserStore()
+const loading = ref(true)
 const netWorth = ref(0)
 const accountCount = ref(0)
 const month = reactive({ income: 0, expense: 0, balance: 0 })
 const recent = ref([])
 const pieItems = ref([])
+const trendPoints = ref([])
 
-const { el: trendEl, setOption: setTrend } = useChart()
+const { el: trendEl, setOption: setTrend, resize: resizeTrend } = useChart()
 const pieChart = useChart()
 const { el: pieEl, setOption: setPie } = pieChart
 
@@ -94,6 +97,8 @@ const fmtDate = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDat
 const fmtTime = s => (s ? String(s).replace('T', ' ').slice(0, 16) : '—')
 const typeName = t => ({ expense: '支出', income: '收入', transfer: '转账' }[t] || '流水')
 const txnKind = t => (t === 'income' ? 'income' : 'expense')
+// 趋势图空态：后端按月补零后若收入支出仍全为 0，用引导空态替代空坐标轴
+const trendEmpty = computed(() => trendPoints.value.every(p => !Number(p.income) && !Number(p.expense)))
 
 const greeting = computed(() => {
   const h = new Date().getHours()
@@ -111,6 +116,14 @@ const monthStart = fmtDate(new Date(now.getFullYear(), now.getMonth(), 1))
 const today = fmtDate(now)
 
 onMounted(async () => {
+  try {
+    await loadDashboard()
+  } finally {
+    loading.value = false
+  }
+})
+
+async function loadDashboard() {
   const [acc, sum, trend, pie, txn] = await Promise.all([
     request.get('/accounts'),
     request.get('/stats/summary', { params: { start: monthStart, end: today } }),
@@ -123,51 +136,55 @@ onMounted(async () => {
   Object.assign(month, sum.data)
   recent.value = txn.data.records
   pieItems.value = pie.data.items
+  trendPoints.value = trend.data.points
   await nextTick()
   pieChart.resize()
+  if (!trendEmpty.value) resizeTrend()
 
   const cIncome = themeColor('--bw-income', '#3fa37a')
   const cExpense = themeColor('--bw-expense', '#e8684a')
   const cCard = themeColor('--bw-card', '#ffffff')
-  setTrend({
-    tooltip: { trigger: 'axis', valueFormatter: v => money(v) },
-    legend: { data: ['收入', '支出'], bottom: 0 },
-    grid: { left: 70, right: 20, top: 20, bottom: 44 },
-    xAxis: { type: 'category', data: trend.data.points.map(p => p.label) },
-    yAxis: { type: 'value' },
-    series: [
-      {
-        name: '收入', type: 'line', smooth: true,
-        symbol: 'circle', symbolSize: 8, lineStyle: { width: 3 },
-        itemStyle: { color: cIncome },
-        areaStyle: {
-          color: {
-            type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
-            colorStops: [
-              { offset: 0, color: cIncome + '40' },
-              { offset: 1, color: cIncome + '05' },
-            ],
+  if (!trendEmpty.value) {
+    setTrend({
+      tooltip: { trigger: 'axis', valueFormatter: v => money(v) },
+      legend: { data: ['收入', '支出'], bottom: 0 },
+      grid: { left: 70, right: 20, top: 20, bottom: 44 },
+      xAxis: { type: 'category', data: trend.data.points.map(p => p.label) },
+      yAxis: { type: 'value' },
+      series: [
+        {
+          name: '收入', type: 'line', smooth: true,
+          symbol: 'circle', symbolSize: 8, lineStyle: { width: 3 },
+          itemStyle: { color: cIncome },
+          areaStyle: {
+            color: {
+              type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
+              colorStops: [
+                { offset: 0, color: cIncome + '40' },
+                { offset: 1, color: cIncome + '05' },
+              ],
+            },
           },
+          data: trend.data.points.map(p => Number(p.income)),
         },
-        data: trend.data.points.map(p => Number(p.income)),
-      },
-      {
-        name: '支出', type: 'line', smooth: true,
-        symbol: 'circle', symbolSize: 8, lineStyle: { width: 3 },
-        itemStyle: { color: cExpense },
-        areaStyle: {
-          color: {
-            type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
-            colorStops: [
-              { offset: 0, color: cExpense + '38' },
-              { offset: 1, color: cExpense + '05' },
-            ],
+        {
+          name: '支出', type: 'line', smooth: true,
+          symbol: 'circle', symbolSize: 8, lineStyle: { width: 3 },
+          itemStyle: { color: cExpense },
+          areaStyle: {
+            color: {
+              type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
+              colorStops: [
+                { offset: 0, color: cExpense + '38' },
+                { offset: 1, color: cExpense + '05' },
+              ],
+            },
           },
+          data: trend.data.points.map(p => Number(p.expense)),
         },
-        data: trend.data.points.map(p => Number(p.expense)),
-      },
-    ],
-  })
+      ],
+    })
+  }
   if (pieItems.value.length) {
     setPie({
       color: ['#dfa76e', '#eec389', '#d98a76', '#6aa88b', '#c5b0cf', '#8fb0cc', '#dfc48c', '#a9c39c', '#d9a8b2', '#9db0d0'],
@@ -183,7 +200,7 @@ onMounted(async () => {
       }],
     })
   }
-})
+}
 </script>
 
 <style scoped>

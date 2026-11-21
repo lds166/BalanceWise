@@ -64,7 +64,7 @@
     <el-input v-model="dlg.name" maxlength="32" placeholder="分类名称" />
     <template #footer>
       <el-button @click="dlg.visible = false">取消</el-button>
-      <el-button type="primary" @click="save">确定</el-button>
+      <el-button type="primary" @click="save">保存</el-button>
     </template>
   </el-dialog>
 </template>

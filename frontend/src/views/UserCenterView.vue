@@ -64,7 +64,7 @@
 <script setup>
 import { reactive } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import request from '../api/request'
 import { useUserStore } from '../stores/user'
 import { useThemeStore } from '../stores/theme'
@@ -106,6 +106,9 @@ async function changePassword() {
     ElMessage.warning('两次输入的新密码不一致')
     return
   }
+  try {
+    await ElMessageBox.confirm('修改密码后需退出并重新登录，确定修改吗？', '修改确认', { type: 'warning' })
+  } catch { return }
   pwdForm.saving = true
   try {
     await request.put('/user/password', {

@@ -28,7 +28,12 @@
     </el-card>
 
     <el-card>
-      <template #header><span>负债账户</span></template>
+      <template #header>
+        <div class="card-head">
+          <span>负债账户</span>
+          <el-button type="primary" size="small" @click="openDialog(null, 'liability')">＋ 新建账户</el-button>
+        </div>
+      </template>
       <AccountRow v-for="a in liabilities" :key="a.id" :acc="a"
                   @reconcile="openReconcile" @edit="openDialog(a)" @archive="toggleArchive" @remove="remove" />
       <el-empty v-if="!liabilities.length" description="暂无负债账户" :image-size="60" />
@@ -121,7 +126,7 @@ async function load() {
   Object.assign(summary, res.data)
 }
 
-function openDialog(acc) {
+function openDialog(acc, presetType) {
   if (acc) {
     Object.assign(dialog, {
       id: acc.id, name: acc.name, type: acc.type,
@@ -129,7 +134,8 @@ function openDialog(acc) {
     })
   } else {
     Object.assign(dialog, {
-      id: null, name: '', type: 'asset', subType: 'cash', initialBalance: 0, remark: '',
+      id: null, name: '', type: presetType || 'asset',
+      subType: presetType === 'liability' ? 'credit_card' : 'cash', initialBalance: 0, remark: '',
     })
   }
   dialog.visible = true
@@ -161,7 +167,7 @@ async function toggleArchive(acc) {
 async function remove(acc) {
   try {
     await ElMessageBox.confirm(
-      acc.isArchived ? `确定删除账户「${acc.name}」？` : `账户「${acc.name}」删除后不可恢复（有交易时会被拦截），确定？`,
+      acc.isArchived ? `确定删除账户「${acc.name}」？` : `确定删除账户「${acc.name}」？（有交易的账户无法删除，将自动拦截）`,
       '删除确认', { type: 'warning' }
     )
   } catch { return }

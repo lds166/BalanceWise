@@ -27,7 +27,7 @@
 
     <div class="bw-card">
       <el-table :data="rows" v-loading="loading" style="width: 100%">
-        <el-table-column prop="occurredAt" label="时间" width="165" />
+        <el-table-column prop="occurredAt" label="时间" width="165" :formatter="fmtTimeCol" />
         <el-table-column label="类型" width="80">
           <template #default="{ row }">
             <el-tag size="small" :type="tagType(row.type)">{{ typeLabel(row.type) }}</el-tag>
@@ -59,7 +59,11 @@
             <el-button size="small" text type="danger" @click="remove(row)">删除</el-button>
           </template>
         </el-table-column>
-        <template #empty><el-empty description="暂无流水" :image-size="60" /></template>
+        <template #empty>
+          <el-empty :description="hasFilter ? '当前筛选条件下没有流水' : '暂无流水'" :image-size="60">
+            <el-button v-if="hasFilter" size="small" @click="resetFilters">清除筛选条件</el-button>
+          </el-empty>
+        </template>
       </el-table>
       <el-pagination
         v-model:current-page="query.page" v-model:page-size="query.size"
@@ -131,6 +135,9 @@ const range = ref(null)
 const cascaderProps = { value: 'id', label: 'name', children: 'children', emitPath: false }
 
 const query = reactive({ page: 1, size: 20, type: null, accountId: null, categoryId: null, keyword: '' })
+// 类型与分类联动：切换类型后清空已选分类，避免「收入类型 + 支出分类」恒查空
+let restoringFilters = false
+watch(() => query.type, () => { if (!restoringFilters) query.categoryId = null })
 const categoryOptions = computed(() => {
   if (query.type === 'income') return incomeTree.value
   if (query.type === 'expense') return expenseTree.value
@@ -156,6 +163,10 @@ const amountText = r =>
   r.type === 'expense' ? `-¥${money(r.amount)}`
   : r.type === 'income' ? `+¥${money(r.amount)}` : `¥${money(r.amount)}`
 const amountClass = r => (r.type === 'expense' ? 'amt-expense' : r.type === 'income' ? 'amt-income' : '')
+// 时间列归一化：后端 ISO "yyyy-MM-ddTHH:mm:ss" → "yyyy-MM-dd HH:mm"（与仪表盘口径一致）
+const fmtTimeCol = (row, col, v) => (v ? String(v).replace('T', ' ').slice(0, 16) : '—')
+// 空态区分：带筛选条件查询为空时，提示并提供一键清除
+const hasFilter = computed(() => !!(query.type || query.accountId || query.categoryId || query.keyword || range.value))
 
 onMounted(async () => {
   const [acc, exp, inc] = await Promise.all([
@@ -166,6 +177,7 @@ onMounted(async () => {
   accounts.value = acc.data.accounts
   expenseTree.value = exp.data
   incomeTree.value = inc.data
+  restoreFilters()
   await load()
 })
 
@@ -193,12 +205,41 @@ async function load() {
 
 function search() {
   query.page = 1
+  persistFilters()
   load()
+}
+
+// 筛选条件持久化到 localStorage：刷新或从其他页面返回后可恢复
+const FILTERS_KEY = 'bw-tx-filters'
+function persistFilters() {
+  localStorage.setItem(FILTERS_KEY, JSON.stringify({
+    type: query.type, accountId: query.accountId, categoryId: query.categoryId,
+    keyword: query.keyword, start: range.value?.[0] ?? null, end: range.value?.[1] ?? null,
+  }))
+}
+
+function restoreFilters() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(FILTERS_KEY) || 'null')
+    if (!saved) return
+    restoringFilters = true
+    if (saved.type) query.type = saved.type
+    if (saved.accountId && accounts.value.some(a => a.id === saved.accountId)) query.accountId = saved.accountId
+    if (saved.categoryId) query.categoryId = saved.categoryId
+    if (saved.keyword) query.keyword = saved.keyword
+    if (saved.start && saved.end) range.value = [saved.start, saved.end]
+  } catch {
+    localStorage.removeItem(FILTERS_KEY)
+  } finally {
+    // watch 默认 flush: 'pre'，先于 nextTick 回调执行，复位前标志仍有效（同 openEdit 模式）
+    nextTick(() => { restoringFilters = false })
+  }
 }
 
 function resetFilters() {
   range.value = null
   Object.assign(query, { page: 1, type: null, accountId: null, categoryId: null, keyword: '' })
+  localStorage.removeItem(FILTERS_KEY)
   load()
 }
 
@@ -266,7 +307,7 @@ async function saveEdit() {
 async function remove(row) {
   try {
     await ElMessageBox.confirm(
-      `确定删除该笔${typeLabel(row.type)}（${amountText(row)}）？删除后余额将自动冲销，流水保留可追溯。`,
+      `确定删除该笔${typeLabel(row.type)}（${amountText(row)}）？删除后余额将自动冲销，此操作不可恢复。`,
       '删除确认', { type: 'warning' })
   } catch { return }
   await request.delete(`/transactions/${row.id}`)

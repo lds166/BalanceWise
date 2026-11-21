@@ -28,7 +28,7 @@
           </el-form>
         </el-card>
 
-        <el-card v-if="preview.rows.length || preview.dropped.length">
+        <el-card v-if="preview.show">
           <template #header>
             <div class="card-head">
               <span>预览（{{ preview.rows.length }} 条，丢弃 {{ preview.dropped.length }} 条）</span>
@@ -36,11 +36,14 @@
                          @click="confirm">确认入账（{{ checkedCount }} 条）</el-button>
             </div>
           </template>
+          <el-empty v-if="!preview.rows.length && !preview.dropped.length"
+                    description="该文件中没有识别到有效流水（请确认文件与所选平台一致）" :image-size="70" />
           <div v-if="preview.dropped.length" class="muted" style="margin-bottom: 8px">
-            丢弃：{{ preview.dropped.join('；') }}
+            丢弃：{{ droppedPreview }}<template v-if="preview.dropped.length > 3">；等共 {{ preview.dropped.length }} 条</template>
           </div>
-          <el-table :data="preview.rows" size="small" max-height="480">
-            <el-table-column label="时间" prop="occurredAt" width="160" />
+          <el-table v-if="preview.rows.length" :data="preview.rows" size="small" max-height="480"
+                    :row-class-name="rowClass">
+            <el-table-column label="时间" prop="occurredAt" width="160" :formatter="fmtTimeCol" />
             <el-table-column label="类型" width="70">
               <template #default="{ row }">
                 <el-tag size="small" :type="row.type === 'expense' ? 'danger' : row.type === 'income' ? 'success' : 'info'">
@@ -94,7 +97,7 @@
       <el-tab-pane label="批次记录" name="batches">
         <el-card>
           <el-table :data="batches" size="small">
-            <el-table-column label="入账时间" prop="importedAt" width="165" />
+            <el-table-column label="入账时间" prop="importedAt" width="165" :formatter="fmtTimeCol" />
             <el-table-column label="平台" width="80">
               <template #default="{ row }">{{ row.platform === 'alipay' ? '支付宝' : '微信' }}</template>
             </el-table-column>
@@ -124,7 +127,7 @@
 
     <el-dialog v-model="detail.visible" title="批次明细" width="760px">
       <el-table :data="detail.records" size="small" max-height="420">
-        <el-table-column prop="occurredAt" label="时间" width="160" />
+        <el-table-column prop="occurredAt" label="时间" width="160" :formatter="fmtTimeCol" />
         <el-table-column label="类型" width="70">
           <template #default="{ row }">
             <el-tag size="small" :type="row.type === 'expense' ? 'danger' : row.type === 'income' ? 'success' : 'info'">
@@ -167,12 +170,20 @@ const pickedFile = ref(null)
 const form = reactive({ platform: 'alipay', defaultAccountId: null })
 const parsing = ref(false)
 const confirming = ref(false)
-const preview = reactive({ fileName: '', rows: [], dropped: [] })
+const preview = reactive({ fileName: '', rows: [], dropped: [], show: false })
 const batches = ref([])
 
 const optionsOf = type => (type === 'income' ? incomeTree.value : expenseTree.value)
 const checkedCount = computed(() => preview.rows.filter(r => r.checked && !r.duplicate).length)
 const money = v => Number(v || 0).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+// 时间列归一化：后端 ISO "yyyy-MM-ddTHH:mm:ss" → "yyyy-MM-dd HH:mm"（与流水页口径一致）
+const fmtTimeCol = (row, col, v) => (v ? String(v).replace('T', ' ').slice(0, 16) : '—')
+// 丢弃原因只展示前 3 条，避免大文件撑爆卡片
+const droppedPreview = computed(() => preview.dropped.slice(0, 3).join('；'))
+// 勾选行缺账户时整行高亮，便于一次找齐
+const rowClass = ({ row }) => (row.checked && !row.duplicate
+  && (row.type !== 'income' && !row.fromAccountId || row.type !== 'expense' && !row.toAccountId)
+  ? 'missing-row' : '')
 
 function onFileChange(file) {
   pickedFile.value = file.raw
@@ -211,6 +222,7 @@ async function parse() {
     preview.fileName = res.data.fileName
     preview.dropped = res.data.dropped
     preview.rows = res.data.rows.map(r => ({ ...r, checked: !r.duplicate }))
+    preview.show = true
     if (!res.data.rows.length) ElMessage.warning('没有可导入的流水')
   } finally {
     parsing.value = false
@@ -218,9 +230,11 @@ async function parse() {
 }
 
 async function confirm() {
-  const missing = preview.rows.find(r => r.checked && !r.duplicate
+  const missingRows = preview.rows.filter(r => r.checked && !r.duplicate
     && (r.type !== 'income' && !r.fromAccountId || r.type !== 'expense' && !r.toAccountId))
-  if (missing) return ElMessage.warning(`第 ${missing.lineNo} 行还未选择账户`)
+  if (missingRows.length) {
+    return ElMessage.warning(`还有 ${missingRows.length} 行未选择账户（已在表格中标黄），请补全后再入账`)
+  }
   confirming.value = true
   try {
     await request.post('/imports/confirm', {
@@ -237,6 +251,7 @@ async function confirm() {
     ElMessage.success('批次已入账')
     preview.rows = []
     preview.dropped = []
+    preview.show = false
     uploadRef.value.clearFiles()
     pickedFile.value = null
     tab.value = 'batches'
@@ -275,4 +290,5 @@ async function rollback(row) {
 .card-head { display: flex; justify-content: space-between; align-items: center; }
 .acc-cell { display: flex; gap: 6px; }
 .muted { color: var(--bw-text-secondary); font-size: 12px; }
+:deep(.missing-row) { background: var(--el-color-warning-light-9); }
 </style>
