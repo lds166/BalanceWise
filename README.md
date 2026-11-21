@@ -9,8 +9,9 @@
 
 ## 本地运行
 
-1. 创建数据库：`CREATE DATABASE balancewise DEFAULT CHARSET utf8mb4;`
-   并执行 `backend/src/main/resources/schema.sql` 建表。
+1. 建库建表：执行 `sql/init-mysql.sql`（建库 `balancewisedb` + 建表 + 可选演示数据，
+   不需要演示数据时删除文件末尾「演示数据」段即可）。
+   `backend/src/main/resources/schema.sql` 为 H2 单元测试初始化专用，MySQL 环境无需手工执行。
 2. 修改 `backend/src/main/resources/application.yml` 中的数据库账号密码。
 3. 启动后端：`cd backend && mvn spring-boot:run`（端口 8080）
 4. 启动前端：`cd frontend && npm install && npm run dev`（端口 5173）

@@ -1,3 +1,8 @@
+-- BalanceWise 建表脚本（user / account / category / transaction_record / import_batch 共 5 张表）
+-- MySQL 环境请优先使用 sql/init-mysql.sql（建库 balancewisedb + 建表 + 可选演示数据）。
+-- 注意：本文件同时被测试环境的 H2 内存库（MODE=MySQL）加载初始化，
+--       因此不能包含 CREATE DATABASE / USE 等 H2 不支持的语句。
+
 CREATE TABLE IF NOT EXISTS `user` (
   id BIGINT AUTO_INCREMENT PRIMARY KEY,
   username VARCHAR(32) NOT NULL UNIQUE,

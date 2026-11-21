@@ -4,9 +4,9 @@ spring:
   application:
     name: balancewise
   datasource:
-    url: ${DB_URL:jdbc:mysql://localhost:3306/balancewise?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai}
+    url: ${DB_URL:jdbc:mysql://172.16.25.128:6006/balancewisedb?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai}
     username: ${DB_USER:root}
-    password: ${DB_PASSWORD:root}
+    password: ${DB_PASSWORD:Hzsun88994788}
     driver-class-name: com.mysql.cj.jdbc.Driver
   servlet:
     multipart:
