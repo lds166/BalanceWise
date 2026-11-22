@@ -2,16 +2,22 @@ package com.balancewise.importbill.parser;
 
 import org.springframework.stereotype.Component;
 
+import java.math.BigDecimal;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
  * 微信账单解析（CSV 与官方导出 xlsx 共用，输入为二维行）。
- * 按首单元格 == "交易时间" 定位表头；状态列兼容 CSV 的「状态」与 xlsx 的「当前状态」；
- * 失败类状态（失败/关闭/已撤销/退款）丢弃，其余视为资金已成功转移——
- * 官方导出的成功态取值不止「支付成功」，还有「对方已收款/已存入零钱/充值成功/提现成功」等。
- * 类型识别：充值/提现/零钱通/转账类 → transfer；红包按收/支；其余消费类按收/支。
+ * 按首单元格 == "交易时间" 定位表头；状态列兼容 CSV 的「状态」与 xlsx 的「当前状态」。
+ * 状态语义按"每一笔资金移动都要有账"处理（账平原则）：
+ * - 成功态（支付成功/已转账/对方已收钱/已转入零钱通/资金已到账/充值完成/提现已到账等）正常入账；
+ * - 部分退款（状态含退款金额，如「已退款¥0.37」）：原支出保留 + 生成一笔退款收入，两笔都记；
+ * - 已全额退款：净额为 0，不入账（丢弃并注明原因）；
+ * - 对方已退还且收/支=收入：退款到账，正常入账；收/支=支出：转出的钱被退回，净额 0 不入账；
+ * - 失败/关闭/已撤销：资金未移动，不入账。
+ * 类型识别：退款/退还类 → 收入；自有账户互转（零钱通/零钱充值/零钱提现/信用卡还款）→ transfer；
+ * 微信用户间「转账」是对外收支，按收/支方向归类。
  */
 @Component
 public class WechatParser implements BillParser {
@@ -20,12 +26,17 @@ public class WechatParser implements BillParser {
     private static final java.util.Set<String> OWN_TRANSFER_TYPES = java.util.Set.of(
             "充值", "提现", "零钱通转入", "零钱通转出", "零钱充值", "零钱提现", "信用卡还款");
 
+    /** 资金未移动的状态（不入账） */
+    private static final java.util.Set<String> FAILED_HINTS = java.util.Set.of("失败", "关闭", "已撤销");
+
+    /** 部分退款金额提取：「已退款¥0.37」「已退款(¥0.45)」 */
+    private static final java.util.regex.Pattern REFUND_AMOUNT =
+            java.util.regex.Pattern.compile("退款[（(]?[¥￥]([0-9.]+)");
+
     @Override
     public String platform() {
         return "wechat";
     }
-
-    private static final java.util.Set<String> FAILED_HINTS = java.util.Set.of("失败", "关闭", "已撤销", "退款", "退还");
 
     @Override
     public BillParseResult parse(List<List<String>> rows) {
@@ -56,27 +67,74 @@ public class WechatParser implements BillParser {
             List<String> cells = rows.get(i);
             int lineNo = i + 1;
             String status = cell(cells, col, statusCol);
-            if (FAILED_HINTS.stream().anyMatch(status::contains)) {
-                result.getDropped().add("第" + lineNo + "行：状态=" + (status.isEmpty() ? "空" : status));
-                continue;
-            }
             try {
-                ParsedRow row = new ParsedRow();
-                row.setLineNo(lineNo);
-                row.setExternalId(cell(cells, col, "交易单号"));
-                row.setOccurredAt(BillParserSupport.parseTime(cell(cells, col, "交易时间")));
-                row.setCounterparty(cell(cells, col, "交易对方"));
-                row.setItem(cell(cells, col, "商品"));
-                row.setAmount(BillParserSupport.parseAmount(cell(cells, col, "金额(元)")));
-                row.setPlatformCategory(cell(cells, col, "交易类型"));
-                row.setPayMethod(cell(cells, col, "支付方式"));
-                row.setType(resolveType(cell(cells, col, "交易类型"), cell(cells, col, "收/支")));
+                ParsedRow row = buildRow(cells, col, lineNo);
+                String direction = cell(cells, col, "收/支");
+
+                // 1) 全额退款：钱出又全额回，净额 0，不入账（余额不受影响）
+                if (status.contains("已全额退款")) {
+                    result.getDropped().add("第" + lineNo + "行：已全额退款（净额为 0），不入账");
+                    continue;
+                }
+                // 2) 部分退款（状态带退款金额）：原支出保留 + 退款金额单独记一笔回流，两笔都记账才平
+                java.util.regex.Matcher refund = REFUND_AMOUNT.matcher(status);
+                if (refund.find()) {
+                    BigDecimal back = BillParserSupport.parseAmount(refund.group(1));
+                    row.setItem((row.getItem() == null ? "" : row.getItem()) + "（部分退款¥" + back.toPlainString() + "）");
+                    result.getRows().add(row);
+                    ParsedRow refundRow = new ParsedRow();
+                    refundRow.setLineNo(lineNo);
+                    refundRow.setExternalId(row.getExternalId() + "-RF");
+                    refundRow.setOccurredAt(row.getOccurredAt());
+                    refundRow.setCounterparty(row.getCounterparty());
+                    refundRow.setItem("退款到账（" + status + "）");
+                    refundRow.setAmount(back);
+                    refundRow.setPlatformCategory(row.getPlatformCategory());
+                    refundRow.setPayMethod(row.getPayMethod());
+                    // 退款回流方向与原交易相反：原支出→退款收入；原收入（收款被退回）→退款支出
+                    refundRow.setType("收入".equals(direction) ? "expense" : "income");
+                    result.getRows().add(refundRow);
+                    continue;
+                }
+                // 3) 对方退还：收/支=收入 表示退款到账，正常入账；收/支=支出 表示转出的钱被退回，净额 0 不入账
+                if (status.contains("退还")) {
+                    if ("收入".equals(direction)) {
+                        result.getRows().add(row);
+                    } else {
+                        result.getDropped().add("第" + lineNo + "行：已退还（净额为 0），不入账");
+                    }
+                    continue;
+                }
+                // 4) 其他退款状态且未标金额：按全额退款处理（净额 0）
+                if (status.contains("退款")) {
+                    result.getDropped().add("第" + lineNo + "行：" + status + "（净额为 0），不入账");
+                    continue;
+                }
+                // 5) 失败/关闭/已撤销：资金未移动
+                if (FAILED_HINTS.stream().anyMatch(status::contains)) {
+                    result.getDropped().add("第" + lineNo + "行：状态=" + status);
+                    continue;
+                }
                 result.getRows().add(row);
             } catch (RuntimeException e) {
                 result.getDropped().add("第" + lineNo + "行：解析失败（" + e.getMessage() + "）");
             }
         }
         return result;
+    }
+
+    private ParsedRow buildRow(List<String> cells, Map<String, Integer> col, int lineNo) {
+        ParsedRow row = new ParsedRow();
+        row.setLineNo(lineNo);
+        row.setExternalId(cell(cells, col, "交易单号"));
+        row.setOccurredAt(BillParserSupport.parseTime(cell(cells, col, "交易时间")));
+        row.setCounterparty(cell(cells, col, "交易对方"));
+        row.setItem(cell(cells, col, "商品"));
+        row.setAmount(BillParserSupport.parseAmount(cell(cells, col, "金额(元)")));
+        row.setPlatformCategory(cell(cells, col, "交易类型"));
+        row.setPayMethod(cell(cells, col, "支付方式"));
+        row.setType(resolveType(cell(cells, col, "交易类型"), cell(cells, col, "收/支")));
+        return row;
     }
 
     private String resolveType(String tradeType, String direction) {

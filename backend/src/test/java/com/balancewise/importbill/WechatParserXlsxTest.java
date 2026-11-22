@@ -84,13 +84,24 @@ class WechatParserXlsxTest {
     @Test
     void parsesOfficialXlsxStructure() {
         BillParseResult result = parser.parse(BillParserSupport.readExcel(buildXlsx()));
-        // 8 行数据：支付成功/对方已收钱/已转入零钱通 保留；退款×2、退还、失败 4 行丢弃
-        assertEquals(4, result.getRows().size());
-        assertEquals(4, result.getDropped().size());
-        assertTrue(result.getDropped().stream().anyMatch(d -> d.contains("已退款¥0.37")));
+        // 8 行数据 → 7 笔流水：部分退款行拆成 原支出+退款收入 两笔；全额退款/支付失败丢弃
+        assertEquals(7, result.getRows().size());
+        assertEquals(2, result.getDropped().size());
         assertTrue(result.getDropped().stream().anyMatch(d -> d.contains("已全额退款")));
-        assertTrue(result.getDropped().stream().anyMatch(d -> d.contains("对方已退还")));
         assertTrue(result.getDropped().stream().anyMatch(d -> d.contains("支付失败")));
+    }
+
+    @Test
+    void partialRefundKeepsBothLegsSoBalanceStaysFlat() {
+        var rows = parser.parse(BillParserSupport.readExcel(buildXlsx())).getRows();
+        // 部分退款：原支出 3.99 保留 + 退款收入 0.37，两笔都记账（净 -3.62，账平）
+        ParsedRow original = rows.stream().filter(r -> r.getItem() != null && r.getItem().contains("部分退款¥0.37")).findFirst().orElseThrow();
+        assertEquals("expense", original.getType());
+        assertEquals(0, new BigDecimal("3.99").compareTo(original.getAmount()));
+        ParsedRow back = rows.stream().filter(r -> r.getExternalId() != null && r.getExternalId().endsWith("-RF")).findFirst().orElseThrow();
+        assertEquals("income", back.getType());
+        assertEquals(0, new BigDecimal("0.37").compareTo(back.getAmount()));
+        assertEquals("退款到账（已退款¥0.37）", back.getItem());
     }
 
     @Test
