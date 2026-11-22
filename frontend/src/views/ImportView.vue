@@ -85,9 +85,13 @@
                 </div>
               </template>
             </el-table-column>
-            <el-table-column label="重复" width="70">
+            <el-table-column label="重复" width="90">
               <template #default="{ row }">
                 <el-tag v-if="row.duplicate" size="small" type="warning">重复</el-tag>
+                <el-tooltip v-else-if="row.duplicateSuspect"
+                            content="库中已有金额相同、类型相同、时间接近的记录，请人工确认是否同一笔" placement="top">
+                  <el-tag size="small" type="warning" effect="plain">疑似重复</el-tag>
+                </el-tooltip>
               </template>
             </el-table-column>
             <el-table-column label="入账" width="55">
@@ -257,7 +261,7 @@ async function parse() {
     const res = await request.post('/imports/preview', fd)
     preview.fileName = res.data.fileName
     preview.dropped = res.data.dropped
-    preview.rows = res.data.rows.map(r => ({ ...r, checked: !r.duplicate }))
+    preview.rows = res.data.rows.map(r => ({ ...r, checked: !r.duplicate && !r.duplicateSuspect }))
     preview.show = true
     if (!res.data.rows.length) ElMessage.warning('没有可导入的流水')
   } finally {

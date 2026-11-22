@@ -21,6 +21,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -114,7 +115,55 @@ public class ImportService {
         vo.setPlatform(platform);
         vo.setRows(rows);
         vo.setDropped(parsed.getDropped());
+        markDuplicateSuspects(userId, rows);
         return vo;
+    }
+
+    /** 疑似重复判定窗口：金额相同、类型相同、时间相差 ≤5 分钟 */
+    private static final int SUSPECT_WINDOW_MINUTES = 5;
+
+    /**
+     * 疑似重复检测（§5.4 规则 4 的兜底）：精确去重只认 external_id，防不住
+     * "月中手工记过一笔、月底导账单又出现同一笔"——这里按 金额+类型+时间窗 对库中记录
+     * 模糊比对。单次范围查询（走 idx_txn_user_time）后内存比对；
+     * 批内不做疑似比对：同文件同分同时同额多为真实批量交易。
+     */
+    private void markDuplicateSuspects(Long userId, List<ImportPreviewRow> rows) {
+        List<java.time.LocalDateTime> times = rows.stream()
+                .map(ImportPreviewRow::getOccurredAt).filter(t -> t != null).toList();
+        if (times.isEmpty()) {
+            return;
+        }
+        java.time.LocalDateTime min = Collections.min(times).minusMinutes(SUSPECT_WINDOW_MINUTES);
+        java.time.LocalDateTime max = Collections.max(times).plusMinutes(SUSPECT_WINDOW_MINUTES);
+        List<TransactionRecord> nearby = transactionRecordMapper.selectList(new LambdaQueryWrapper<TransactionRecord>()
+                .select(TransactionRecord::getType, TransactionRecord::getAmount, TransactionRecord::getOccurredAt)
+                .eq(TransactionRecord::getUserId, userId)
+                .eq(TransactionRecord::getIsDeleted, 0)
+                .between(TransactionRecord::getOccurredAt, min, max));
+        if (nearby.isEmpty()) {
+            return;
+        }
+        for (ImportPreviewRow row : rows) {
+            if (row.getOccurredAt() == null) {
+                continue;
+            }
+            boolean suspect = nearby.stream().anyMatch(t -> isSamePulse(t, row));
+            row.setDuplicateSuspect(suspect);
+        }
+    }
+
+    /** 金额（两位小数）+ 类型相同且时间在窗口内 → 疑似同一笔资金变动 */
+    private boolean isSamePulse(TransactionRecord t, ImportPreviewRow row) {
+        if (t.getType() == null || !t.getType().equals(row.getType())
+                || t.getAmount() == null || t.getOccurredAt() == null) {
+            return false;
+        }
+        boolean amountEq = t.getAmount().setScale(2, java.math.RoundingMode.HALF_UP)
+                .compareTo(row.getAmount().setScale(2, java.math.RoundingMode.HALF_UP)) == 0;
+        boolean timeNear = !t.getOccurredAt().isAfter(row.getOccurredAt().plusMinutes(SUSPECT_WINDOW_MINUTES))
+                && !t.getOccurredAt().isBefore(row.getOccurredAt().minusMinutes(SUSPECT_WINDOW_MINUTES));
+        return amountEq && timeNear;
     }
 
     /**

@@ -156,4 +156,51 @@ class ImportPreviewTest {
                 .filter(r -> "202609010000100001".equals(r.getExternalId()))
                 .findFirst().orElseThrow().isDuplicate());
     }
+
+    /**
+     * 疑似重复（§5.4 兜底）：手工记过一笔与导入行金额相同、类型相同、时间 ±5 分钟内
+     * → 预览标 duplicateSuspect；类型/金额/时间窗任一不符则不标。
+     */
+    @Test
+    void suspectDuplicateMarkedAgainstManualRecord() throws Exception {
+        Account def = newAccount("现金");
+        byte[] content = Files.readAllBytes(
+                new ClassPathResource("fixtures/alipay-sample.csv").getFile().toPath());
+
+        // 手工支出 35.50，与行0（永辉超市 35.50 支出 2026-09-01 08:30:22）相差约 1.5 分钟
+        com.balancewise.record.entity.TransactionRecord manual =
+                new com.balancewise.record.entity.TransactionRecord();
+        manual.setUserId(1L);
+        manual.setType("expense");
+        manual.setFromAccountId(def.getId());
+        manual.setAmount(new BigDecimal("35.50"));
+        manual.setOccurredAt(java.time.LocalDateTime.of(2026, 9, 1, 8, 32, 0));
+        manual.setSource("manual");
+        manual.setIsDeleted(0);
+        transactionRecordMapper.insert(manual);
+
+        ImportPreviewVo vo = importService.preview(1L, "alipay", content, def.getId());
+
+        // 行0：金额/类型/时间窗全命中 → 疑似重复
+        ImportPreviewRow row0 = vo.getRows().stream()
+                .filter(r -> "202609010000100001".equals(r.getExternalId()))
+                .findFirst().orElseThrow();
+        assertTrue(row0.isDuplicateSuspect());
+        // 行1：金额不同 → 不标
+        assertFalse(vo.getRows().stream()
+                .filter(r -> "202609050000100005".equals(r.getExternalId()))
+                .findFirst().orElseThrow().isDuplicateSuspect());
+        // 行3：金额同为 35.50 但类型是收入（退款），手工记录是支出 → 不标（类型必须一致）
+        assertFalse(vo.getRows().stream()
+                .filter(r -> "202609040000100004".equals(r.getExternalId()))
+                .findFirst().orElseThrow().isDuplicateSuspect());
+
+        // 手工时间移出 ±5 分钟窗口（Δ29.5 分钟）→ 不再标
+        manual.setOccurredAt(java.time.LocalDateTime.of(2026, 9, 1, 9, 0, 0));
+        transactionRecordMapper.updateById(manual);
+        ImportPreviewVo again = importService.preview(1L, "alipay", content, def.getId());
+        assertFalse(again.getRows().stream()
+                .filter(r -> "202609010000100001".equals(r.getExternalId()))
+                .findFirst().orElseThrow().isDuplicateSuspect());
+    }
 }

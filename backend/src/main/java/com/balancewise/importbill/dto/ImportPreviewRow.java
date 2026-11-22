@@ -26,4 +26,6 @@ public class ImportPreviewRow {
     private String matchSource;
     /** true = 与库中未删除记录或批内记录重复，默认不勾选 */
     private boolean duplicate;
+    /** true = 库中存在金额相同、类型相同、时间接近（±5 分钟）的记录，疑似同一笔（手工记账与导入互相看不见的兜底），默认不勾选但可强制入账 */
+    private boolean duplicateSuspect;
 }
