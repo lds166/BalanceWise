@@ -40,6 +40,33 @@
     </el-row>
 
     <el-card shadow="hover" style="margin-top: 16px">
+      <template #header>
+        <div class="card-head">
+          <span>🤖 AI 智能分类</span>
+          <el-switch v-model="aiForm.enabled" active-text="启用" inline-prompt />
+        </div>
+      </template>
+      <el-form label-width="90px" style="max-width: 520px">
+        <el-form-item label="接口地址">
+          <el-input v-model="aiForm.baseUrl"
+                    placeholder="OpenAI 兼容地址，如 https://api.siliconflow.cn/v1" />
+        </el-form-item>
+        <el-form-item label="API Key">
+          <el-input v-model="aiForm.apiKey" type="password" show-password
+                    :placeholder="aiForm.hasKey ? `已保存（${aiForm.keyMasked}），留空不修改` : '必填，自备 OpenAI 兼容 Key'" />
+        </el-form-item>
+        <el-form-item label="模型">
+          <el-input v-model="aiForm.model" placeholder="如 Qwen/Qwen2.5-7B-Instruct" />
+        </el-form-item>
+        <el-form-item>
+          <el-button type="primary" :loading="aiForm.saving" @click="saveAi">保存</el-button>
+          <el-button :loading="aiForm.testing" @click="testAi">测试连接</el-button>
+          <span class="hint" style="margin-left: 12px">启用后，导入预览时规则未命中的流水交给大模型自动分类</span>
+        </el-form-item>
+      </el-form>
+    </el-card>
+
+    <el-card shadow="hover" style="margin-top: 16px">
       <template #header><span>🎨 外观主题</span></template>
       <div class="theme-grid">
         <button
@@ -62,7 +89,7 @@
 </template>
 
 <script setup>
-import { reactive } from 'vue'
+import { onMounted, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import request from '../api/request'
@@ -75,6 +102,67 @@ const theme = useThemeStore()
 
 const nickForm = reactive({ nickname: store.user?.nickname || '', saving: false })
 const pwdForm = reactive({ oldPassword: '', newPassword: '', confirm: '', saving: false })
+
+// AI 智能分类配置（用户级）：Key 只存不回显，回显仅有掩码；留空表示不修改已存 Key
+const aiForm = reactive({
+  enabled: false, baseUrl: '', model: '', apiKey: '',
+  hasKey: false, keyMasked: '', saving: false, testing: false,
+})
+
+onMounted(async () => {
+  const res = await request.get('/user/ai-config')
+  aiForm.enabled = res.data.enabled
+  aiForm.baseUrl = res.data.baseUrl || ''
+  aiForm.model = res.data.model || ''
+  aiForm.hasKey = res.data.hasKey
+  aiForm.keyMasked = res.data.keyMasked
+})
+
+async function saveAi() {
+  if (!aiForm.baseUrl || !aiForm.baseUrl.trim()) {
+    return ElMessage.warning('接口地址不能为空')
+  }
+  if (!aiForm.hasKey && (!aiForm.apiKey || !aiForm.apiKey.trim())) {
+    return ElMessage.warning('首次启用请填写 API Key')
+  }
+  aiForm.saving = true
+  try {
+    const res = await request.put('/user/ai-config', {
+      enabled: aiForm.enabled,
+      baseUrl: aiForm.baseUrl.trim(),
+      model: aiForm.model,
+      apiKey: aiForm.apiKey, // 留空 = 不修改已存 Key
+    })
+    aiForm.hasKey = res.data.hasKey
+    aiForm.keyMasked = res.data.keyMasked
+    aiForm.apiKey = ''
+    ElMessage.success(aiForm.enabled ? 'AI 配置已保存并启用' : 'AI 配置已保存（未启用）')
+  } finally {
+    aiForm.saving = false
+  }
+}
+
+async function testAi() {
+  if (!aiForm.baseUrl || !aiForm.baseUrl.trim()) {
+    return ElMessage.warning('请先填写接口地址')
+  }
+  aiForm.testing = true
+  try {
+    const res = await request.post('/user/ai-config/test', {
+      enabled: aiForm.enabled,
+      baseUrl: aiForm.baseUrl.trim(),
+      model: aiForm.model,
+      apiKey: aiForm.apiKey, // 留空回退已存 Key
+    })
+    if (res.data === 'ok') {
+      ElMessage.success('连接成功，接口可用')
+    } else {
+      ElMessage.error('连接失败：' + res.data)
+    }
+  } finally {
+    aiForm.testing = false
+  }
+}
 
 async function saveNickname() {
   if (!nickForm.nickname || !nickForm.nickname.trim()) {
@@ -126,6 +214,7 @@ async function changePassword() {
 
 <style scoped>
 .hint { font-size: 12px; color: var(--bw-text-secondary); }
+.card-head { display: flex; justify-content: space-between; align-items: center; }
 
 .theme-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
 .theme-option {

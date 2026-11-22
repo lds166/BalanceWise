@@ -4,9 +4,9 @@
 -- 适用版本 : MySQL 8.x（5.7+ 兼容）
 -- 执行方式 : mysql -u root -p --default-character-set=utf8mb4 < sql/init-mysql.sql
 --            （或在此文件于 Navicat / DataGrip / IDEA Database 等工具中直接运行）
--- 脚本内容 : ① 建库（utf8mb4）→ ② 六张业务表（含注释/索引/时间戳自动更新）→ ③ 演示数据（可选）
+-- 脚本内容 : ① 建库（utf8mb4）→ ② 七张业务表（含注释/索引/时间戳自动更新）→ ③ 演示数据（可选）
 --
--- ⚠ 重复执行会先 DROP 六张业务表再重建，库内已有数据将被清空，请确认后再执行。
+-- ⚠ 重复执行会先 DROP 七张业务表再重建，库内已有数据将被清空，请确认后再执行。
 -- 说明 : backend/src/main/resources/schema.sql 为 H2 内存库（单元测试）专用的最小结构；
 --        本脚本是 MySQL 环境的正式全量初始化脚本，表结构与 schema.sql 字段一一对应，
 --        差异仅在于：本脚本带 ON UPDATE CURRENT_TIMESTAMP（应用无自动填充，
@@ -36,6 +36,7 @@ DROP TABLE IF EXISTS category;
 DROP TABLE IF EXISTS transaction_record;
 DROP TABLE IF EXISTS import_batch;
 DROP TABLE IF EXISTS import_alias;
+DROP TABLE IF EXISTS ai_config;
 
 -- ------------------------------------------------------------------
 -- ② 建表（五张业务表）
@@ -143,6 +144,22 @@ CREATE TABLE import_alias (
   UNIQUE KEY uk_alias_user_type_text (user_id, alias_type, alias_text, kind),
   KEY idx_alias_user (user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='导入映射记忆表';
+
+-- AI 分类配置表：用户在个人信息页配置的大模型接入参数（用户级，一人一行）。
+-- api_key 为用户自备 Key（OpenAI 兼容接口，默认硅基流动）；接口层只存不回显。
+-- 未配置/未启用的用户自动降级：读服务端全局配置（balancewise.ai），再无则跳过 AI 层。
+CREATE TABLE ai_config (
+  id         BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键',
+  user_id    BIGINT       NOT NULL                COMMENT '所属用户 id',
+  enabled    TINYINT(1)   NOT NULL DEFAULT 0      COMMENT '是否启用 AI 分类：0 否 / 1 是',
+  base_url   VARCHAR(255) NOT NULL                COMMENT 'OpenAI 兼容接口地址（如 https://api.siliconflow.cn/v1）',
+  api_key    VARCHAR(255) NOT NULL                COMMENT 'API Key（用户自备，接口只存不回显）',
+  model      VARCHAR(128) NOT NULL                COMMENT '模型名（如 Qwen/Qwen2.5-7B-Instruct）',
+  created_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  updated_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_ai_config_user (user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='AI 分类配置表（用户级）';
 
 SET FOREIGN_KEY_CHECKS = 1;
 

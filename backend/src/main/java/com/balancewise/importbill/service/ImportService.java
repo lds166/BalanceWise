@@ -129,19 +129,19 @@ public class ImportService {
         return vo;
     }
 
-    /** 分类流水线第 3 层：AI 推荐（仅记忆/规则未命中的非转账行）；未启用/异常自动降级，绝不阻断导入 */
+    /** 分类流水线第 3 层：AI 推荐（仅记忆/规则未命中的非转账行）；未配置/异常自动降级，绝不阻断导入 */
     private void applyAiClassification(Long userId, ImportPreviewVo vo, List<ImportPreviewRow> rows) {
         List<ImportPreviewRow> pending = rows.stream()
                 .filter(r -> r.getCategoryId() == null && !"transfer".equals(r.getType()))
                 .toList();
-        if (pending.isEmpty() || !aiClassifier.usable()) {
+        if (pending.isEmpty()) {
             return;
         }
         if (pending.size() > aiClassifier.getMaxRows()) {
             pending = pending.subList(0, aiClassifier.getMaxRows());
             vo.setNotice("待分类流水过多，AI 仅处理前 " + aiClassifier.getMaxRows() + " 条，其余请手动分类");
         }
-        AiClassifier.AiOutcome outcome = aiClassifier.classify(userId, userCategories(userId), pending);
+        AiClassifier.AiOutcome outcome = aiClassifier.classifyForUser(userId, userCategories(userId), pending);
         if (outcome.error() != null) {
             vo.setNotice("AI 分类暂不可用，本次已跳过，可稍后重试或手动分类");
             return;

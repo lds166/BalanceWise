@@ -3,6 +3,7 @@ package com.balancewise.importbill;
 import com.balancewise.category.entity.Category;
 import com.balancewise.category.mapper.CategoryMapper;
 import com.balancewise.importbill.ai.AiClassifier;
+import com.balancewise.importbill.ai.AiConfigService;
 import com.balancewise.importbill.ai.AiProperties;
 import com.balancewise.importbill.dto.ImportPreviewRow;
 import com.balancewise.importbill.service.ImportService;
@@ -43,13 +44,13 @@ class ImportAiIntegrationTest {
     static class FakeAiConfig {
         @Bean
         @Primary
-        AiClassifier fakeAiClassifier() {
+        AiClassifier fakeAiClassifier(AiConfigService aiConfigService) {
             AiProperties p = new AiProperties();
             p.setEnabled(true);
             p.setApiKey("fake-key");
-            return new AiClassifier(p, new ObjectMapper(), RestClient.builder()) {
+            return new AiClassifier(aiConfigService, p, new ObjectMapper(), RestClient.builder()) {
                 @Override
-                public AiOutcome classify(Long userId, List<Category> categories, List<ImportPreviewRow> rows) {
+                public AiOutcome classifyForUser(Long userId, List<Category> categories, List<ImportPreviewRow> rows) {
                     if (failNext) {
                         return new AiOutcome(Map.of(), "boom");
                     }

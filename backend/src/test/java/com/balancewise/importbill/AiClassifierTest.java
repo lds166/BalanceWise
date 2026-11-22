@@ -2,6 +2,7 @@ package com.balancewise.importbill;
 
 import com.balancewise.category.entity.Category;
 import com.balancewise.importbill.ai.AiClassifier;
+import com.balancewise.importbill.ai.AiClassifier.AiRuntimeConfig;
 import com.balancewise.importbill.ai.AiProperties;
 import com.balancewise.importbill.dto.ImportPreviewRow;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -24,19 +25,24 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
 
 /**
  * AI 分类器单元测试（MockRestServiceServer 模拟 OpenAI 兼容端点，不起 Spring 容器）：
- * 有效命中 / 无效分类与低置信度过滤 / kind 过滤 / 异常降级 / 未启用零请求。
+ * 有效命中 / 无效分类与低置信度过滤 / kind 过滤 / 异常降级 / 无配置零请求 / 测试连接。
  */
 class AiClassifierTest {
 
     private static final String URL = "https://ai.example.com/v1/chat/completions";
 
-    private AiProperties props(boolean enabled) {
+    private AiProperties props() {
         AiProperties p = new AiProperties();
-        p.setEnabled(enabled);
-        p.setApiKey(enabled ? "test-key" : "");
+        p.setEnabled(true);
+        p.setApiKey("global-key");
         p.setModel("test-model");
-        p.setBaseUrl("https://ai.example.com/v1");
+        p.setBaseUrl("https://global.example.com/v1");
+        p.setConfidenceThreshold(0.6);
         return p;
+    }
+
+    private AiRuntimeConfig cfg() {
+        return new AiRuntimeConfig("https://ai.example.com/v1", "test-key", "test-model");
     }
 
     private List<Category> categories() {
@@ -71,7 +77,7 @@ class AiClassifierTest {
     void classifyKeepsValidHighConfidenceHitsOnly() {
         RestClient.Builder builder = RestClient.builder();
         MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
-        AiClassifier c = new AiClassifier(props(true), new ObjectMapper(), builder);
+        AiClassifier c = new AiClassifier(null, props(), new ObjectMapper(), builder);
 
         String items = "{\"items\":["
                 + "{\"lineNo\":1,\"categoryId\":11,\"confidence\":0.9},"
@@ -89,7 +95,7 @@ class AiClassifierTest {
         List<ImportPreviewRow> rows = List.of(
                 row(1, "expense"), row(2, "expense"), row(3, "expense"),
                 row(4, "expense"), row(5, "expense"));
-        AiClassifier.AiOutcome out = c.classify(1L, categories(), rows);
+        AiClassifier.AiOutcome out = c.classify(cfg(), categories(), rows);
         assertNull(out.error());
         assertEquals(Map.of(1, 11L), out.hits());
         server.verify();
@@ -99,10 +105,10 @@ class AiClassifierTest {
     void classifyDegradesGracefullyOnServerError() {
         RestClient.Builder builder = RestClient.builder();
         MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
-        AiClassifier c = new AiClassifier(props(true), new ObjectMapper(), builder);
+        AiClassifier c = new AiClassifier(null, props(), new ObjectMapper(), builder);
         server.expect(requestTo(URL)).andRespond(withServerError());
 
-        AiClassifier.AiOutcome out = c.classify(1L, categories(), List.of(row(1, "expense")));
+        AiClassifier.AiOutcome out = c.classify(cfg(), categories(), List.of(row(1, "expense")));
         assertNotNull(out.error());
         assertTrue(out.hits().isEmpty());
         server.verify();
@@ -112,26 +118,42 @@ class AiClassifierTest {
     void malformedAiOutputDegradesInsteadOfThrowing() {
         RestClient.Builder builder = RestClient.builder();
         MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
-        AiClassifier c = new AiClassifier(props(true), new ObjectMapper(), builder);
+        AiClassifier c = new AiClassifier(null, props(), new ObjectMapper(), builder);
         // 缺 items 数组 → 解析异常 → 降级
         server.expect(requestTo(URL))
                 .andRespond(withSuccess(chatBody("{\"foo\":1}"), MediaType.APPLICATION_JSON));
 
-        AiClassifier.AiOutcome out = c.classify(1L, categories(), List.of(row(1, "expense")));
+        AiClassifier.AiOutcome out = c.classify(cfg(), categories(), List.of(row(1, "expense")));
         assertNotNull(out.error());
         assertTrue(out.hits().isEmpty());
         server.verify();
     }
 
     @Test
-    void disabledOrMissingKeySkipsHttpCall() {
+    void nullConfigSkipsHttpCall() {
         RestClient.Builder builder = RestClient.builder();
         MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build(); // 无任何 expectation
-        AiClassifier c = new AiClassifier(props(false), new ObjectMapper(), builder);
+        AiClassifier c = new AiClassifier(null, props(), new ObjectMapper(), builder);
 
-        AiClassifier.AiOutcome out = c.classify(1L, categories(), List.of(row(1, "expense")));
+        AiClassifier.AiOutcome out = c.classify(null, categories(), List.of(row(1, "expense")));
         assertTrue(out.hits().isEmpty());
         assertNull(out.error());
         server.verify(); // 未发出任何请求
+    }
+
+    @Test
+    void testConnectionReturnsNullOnSuccessAndMessageOnFailure() {
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        AiClassifier c = new AiClassifier(null, props(), new ObjectMapper(), builder);
+
+        // 两次期望先声明（MockRestServiceServer 要求在发请求前全部注册）
+        server.expect(requestTo(URL))
+                .andRespond(withSuccess(chatBody("{\"items\":[]}"), MediaType.APPLICATION_JSON));
+        server.expect(requestTo(URL)).andRespond(withServerError());
+        // 成功：返回 null；失败：返回原因，不抛异常
+        assertNull(c.testConnection(cfg()));
+        assertNotNull(c.testConnection(cfg()));
+        server.verify();
     }
 }

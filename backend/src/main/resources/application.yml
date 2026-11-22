@@ -26,7 +26,8 @@ jwt:
 cors:
   allowed-origins: http://localhost:5173
 # AI 账单分类（OpenAI 兼容接口，默认硅基流动；换厂商只改 base-url/model）
-# api-key 通过环境变量 AI_API_KEY 注入；未配置时自动降级为记忆+规则两层，导入不受影响
+# 运行时优先读用户级配置（个人信息页，存 ai_config 表）；此处的 api-key（环境变量 AI_API_KEY）
+# 仅作为全局兜底，均未配置时自动降级为记忆+规则两层，导入不受影响
 balancewise:
   ai:
     enabled: true
