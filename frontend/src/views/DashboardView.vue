@@ -75,6 +75,7 @@ import { useChart } from '../composables/useChart'
 import { useUserStore } from '../stores/user'
 import { categoryEmoji } from '../utils/emoji'
 import { themeColor } from '../utils/themeColor'
+import { chartTheme } from '../utils/chartTheme'
 
 const router = useRouter()
 const store = useUserStore()
@@ -86,9 +87,9 @@ const recent = ref([])
 const pieItems = ref([])
 const trendPoints = ref([])
 
-const { el: trendEl, setOption: setTrend, resize: resizeTrend } = useChart()
+const { el: trendEl, setOptionFactory: setTrend, resize: resizeTrend } = useChart()
 const pieChart = useChart()
-const { el: pieEl, setOption: setPie } = pieChart
+const { el: pieEl, setOptionFactory: setPie } = pieChart
 
 const money = v => Number(v || 0).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const pad = n => String(n).padStart(2, '0')
@@ -152,63 +153,73 @@ async function loadDashboard() {
   pieChart.resize()
   if (!trendEmpty.value) resizeTrend()
 
-  const cIncome = themeColor('--bw-income', '#3fa37a')
-  const cExpense = themeColor('--bw-expense', '#e8684a')
-  const cCard = themeColor('--bw-card', '#ffffff')
   if (!trendEmpty.value) {
-    setTrend({
-      tooltip: { trigger: 'axis', valueFormatter: v => money(v) },
-      legend: { data: ['收入', '支出'], bottom: 0 },
-      grid: { left: 70, right: 20, top: 20, bottom: 44 },
-      xAxis: { type: 'category', data: trend.data.points.map(p => p.label) },
-      yAxis: { type: 'value' },
-      series: [
-        {
-          name: '收入', type: 'line', smooth: true,
-          symbol: 'circle', symbolSize: 8, lineStyle: { width: 3 },
-          itemStyle: { color: cIncome },
-          areaStyle: {
-            color: {
-              type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
-              colorStops: [
-                { offset: 0, color: cIncome + '40' },
-                { offset: 1, color: cIncome + '05' },
-              ],
+    // option 工厂：颜色在渲染时解析当前主题令牌，切主题自动重渲染换色
+    setTrend(() => {
+      const ct = chartTheme()
+      const cIncome = themeColor('--bw-income', '#3fa37a')
+      const cExpense = themeColor('--bw-expense', '#e8684a')
+      return {
+        tooltip: { trigger: 'axis', valueFormatter: v => money(v) },
+        legend: { ...ct.legendText, data: ['收入', '支出'], bottom: 0 },
+        grid: { left: 70, right: 20, top: 20, bottom: 44 },
+        xAxis: { type: 'category', ...ct.categoryAxis, data: trendPoints.value.map(p => p.label) },
+        yAxis: { type: 'value', ...ct.valueAxis },
+        series: [
+          {
+            name: '收入', type: 'line', smooth: true,
+            symbol: 'circle', symbolSize: 8, lineStyle: { width: 3 },
+            itemStyle: { color: cIncome },
+            areaStyle: {
+              color: {
+                type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
+                colorStops: [
+                  { offset: 0, color: cIncome + '40' },
+                  { offset: 1, color: cIncome + '05' },
+                ],
+              },
             },
+            data: trendPoints.value.map(p => Number(p.income)),
           },
-          data: trend.data.points.map(p => Number(p.income)),
-        },
-        {
-          name: '支出', type: 'line', smooth: true,
-          symbol: 'circle', symbolSize: 8, lineStyle: { width: 3 },
-          itemStyle: { color: cExpense },
-          areaStyle: {
-            color: {
-              type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
-              colorStops: [
-                { offset: 0, color: cExpense + '38' },
-                { offset: 1, color: cExpense + '05' },
-              ],
+          {
+            name: '支出', type: 'line', smooth: true,
+            symbol: 'circle', symbolSize: 8, lineStyle: { width: 3 },
+            itemStyle: { color: cExpense },
+            areaStyle: {
+              color: {
+                type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
+                colorStops: [
+                  { offset: 0, color: cExpense + '38' },
+                  { offset: 1, color: cExpense + '05' },
+                ],
+              },
             },
+            data: trendPoints.value.map(p => Number(p.expense)),
           },
-          data: trend.data.points.map(p => Number(p.expense)),
-        },
-      ],
+        ],
+      }
     })
   }
   if (pieItems.value.length) {
-    setPie({
-      color: ['#dfa76e', '#eec389', '#d98a76', '#6aa88b', '#c5b0cf', '#8fb0cc', '#dfc48c', '#a9c39c', '#d9a8b2', '#9db0d0'],
-      tooltip: { trigger: 'item', valueFormatter: v => money(v) },
-      legend: { bottom: 0, type: 'scroll' },
-      series: [{
-        type: 'pie',
-        radius: ['40%', '65%'],
-        center: ['50%', '42%'],
-        itemStyle: { borderRadius: 6, borderColor: cCard, borderWidth: 3 },
-        label: { formatter: '{b}\n{d}%' },
-        data: pieItems.value.map(i => ({ name: i.name, value: Number(i.amount) })),
-      }],
+    setPie(() => {
+      const ct = chartTheme()
+      const cCard = themeColor('--bw-card', '#ffffff')
+      return {
+        color: ['#dfa76e', '#eec389', '#d98a76', '#6aa88b', '#c5b0cf', '#8fb0cc', '#dfc48c', '#a9c39c', '#d9a8b2', '#9db0d0'],
+        tooltip: { trigger: 'item', valueFormatter: v => money(v) },
+        legend: { ...ct.legendText, bottom: 0, type: 'scroll' },
+        series: [{
+          type: 'pie',
+          radius: ['40%', '65%'],
+          center: ['50%', '42%'],
+          itemStyle: { borderRadius: 6, borderColor: cCard, borderWidth: 3 },
+          label: { formatter: '{b}\n{d}%', color: ct.legendText.textStyle.color },
+          // 小扇区标签防重叠：小于 6°（约 1.7%）不出标签，仍重叠的自动隐藏
+          minShowLabelAngle: 6,
+          labelLayout: { hideOverlap: true },
+          data: pieItems.value.map(i => ({ name: i.name, value: Number(i.amount) })),
+        }],
+      }
     })
   }
 }

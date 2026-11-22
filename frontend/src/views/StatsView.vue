@@ -100,6 +100,7 @@ import { computed, nextTick, onActivated, onMounted, reactive, ref, watch } from
 import request from '../api/request'
 import { useChart } from '../composables/useChart'
 import { themeColor } from '../utils/themeColor'
+import { chartTheme } from '../utils/chartTheme'
 
 // ===== 多维筛选（UC-5.7）=====
 const preset = ref('month')
@@ -119,10 +120,10 @@ const trendEmpty = computed(() => trendPoints.value.every(p => !Number(p.income)
 // 资产/负债占比空态：资产与负债合计均为 0（无账户）时展示引导
 const ratioEmpty = computed(() => !Number(accSummary.assetTotal) && !Number(accSummary.liabilityTotal))
 
-const { el: trendEl, setOption: setTrend, resize: resizeTrend } = useChart()
-const { el: pieEl, setOption: setPie, on: onPie, resize: resizePie } = useChart()
-const { el: barEl, setOption: setBar, resize: resizeBar } = useChart()
-const { el: ratioEl, setOption: setRatio, resize: resizeRatio } = useChart()
+const { el: trendEl, setOptionFactory: setTrend, resize: resizeTrend } = useChart()
+const { el: pieEl, setOptionFactory: setPie, on: onPie, resize: resizePie } = useChart()
+const { el: barEl, setOptionFactory: setBar, resize: resizeBar } = useChart()
+const { el: ratioEl, setOptionFactory: setRatio, resize: resizeRatio } = useChart()
 
 const money = v => Number(v || 0).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const pad = n => String(n).padStart(2, '0')
@@ -198,20 +199,25 @@ async function loadTrend() {
   const pts = res.data.points
   trendPoints.value = pts
   if (trendEmpty.value) return
-  setTrend({
-    tooltip: { trigger: 'axis', valueFormatter: v => money(v) },
-    legend: { data: ['收入', '支出', '结余'], bottom: 0 },
-    grid: { left: 70, right: 20, top: 20, bottom: 46 },
-    xAxis: { type: 'category', data: pts.map(p => p.label) },
-    yAxis: { type: 'value' },
-    series: [
-      { name: '收入', type: 'line', smooth: true, lineStyle: { width: 3 }, symbol: 'circle', symbolSize: 7,
-        itemStyle: { color: themeColor('--bw-income', '#3fa37a') }, data: pts.map(p => Number(p.income)) },
-      { name: '支出', type: 'line', smooth: true, lineStyle: { width: 3 }, symbol: 'circle', symbolSize: 7,
-        itemStyle: { color: themeColor('--bw-expense', '#e8684a') }, data: pts.map(p => Number(p.expense)) },
-      { name: '结余', type: 'line', smooth: true, lineStyle: { width: 2, type: 'dashed' }, symbol: 'none',
-        itemStyle: { color: themeColor('--bw-primary', '#f28c38') }, data: pts.map(p => Number(p.balance)) },
-    ],
+  // option 工厂：渲染时解析当前主题令牌，切主题自动重渲染；单周期数据退化为柱状（折线一个点没有信息量）
+  setTrend(() => {
+    const ct = chartTheme()
+    const single = pts.length <= 1
+    return {
+      tooltip: { trigger: 'axis', valueFormatter: v => money(v) },
+      legend: { ...ct.legendText, data: ['收入', '支出', '结余'], bottom: 0 },
+      grid: { left: 70, right: 20, top: 20, bottom: 46 },
+      xAxis: { type: 'category', ...ct.categoryAxis, data: pts.map(p => p.label) },
+      yAxis: { type: 'value', ...ct.valueAxis },
+      series: [
+        { name: '收入', type: single ? 'bar' : 'line', smooth: !single, lineStyle: { width: 3 }, symbol: 'circle', symbolSize: 7,
+          barMaxWidth: 44, itemStyle: { color: themeColor('--bw-income', '#3fa37a') }, data: pts.map(p => Number(p.income)) },
+        { name: '支出', type: single ? 'bar' : 'line', smooth: !single, lineStyle: { width: 3 }, symbol: 'circle', symbolSize: 7,
+          barMaxWidth: 44, itemStyle: { color: themeColor('--bw-expense', '#e8684a') }, data: pts.map(p => Number(p.expense)) },
+        { name: '结余', type: single ? 'bar' : 'line', smooth: !single, lineStyle: { width: 2, type: 'dashed' }, symbol: 'none',
+          barMaxWidth: 44, itemStyle: { color: themeColor('--bw-primary', '#f28c38') }, data: pts.map(p => Number(p.balance)) },
+      ],
+    }
   })
   // 空态→有数据翻转时容器由隐藏转可见，DOM 更新后 resize 保证尺寸正确
   nextTick(resizeTrend)
@@ -231,17 +237,23 @@ const PIE_PALETTE = ['#dfa76e', '#eec389', '#d98a76', '#6aa88b', '#c5b0cf', '#8f
 function renderPie() {
   const source = drill.value ? drill.value.children : catItems.value
   if (!source.length) return
-  setPie({
-    color: PIE_PALETTE,
-    tooltip: { trigger: 'item', valueFormatter: v => money(v) },
-    series: [{
-      type: 'pie',
-      radius: ['35%', '60%'],
-      center: ['50%', '50%'],
-      itemStyle: { borderRadius: 6, borderColor: themeColor('--bw-card', '#ffffff'), borderWidth: 3 },
-      data: source.map(i => ({ name: i.name, value: Number(i.amount) })),
-      label: { formatter: '{b}\n{d}%' },
-    }],
+  setPie(() => {
+    const ct = chartTheme()
+    return {
+      color: PIE_PALETTE,
+      tooltip: { trigger: 'item', valueFormatter: v => money(v) },
+      series: [{
+        type: 'pie',
+        radius: ['35%', '60%'],
+        center: ['50%', '50%'],
+        itemStyle: { borderRadius: 6, borderColor: themeColor('--bw-card', '#ffffff'), borderWidth: 3 },
+        data: source.map(i => ({ name: i.name, value: Number(i.amount) })),
+        label: { formatter: '{b}\n{d}%', color: ct.legendText.textStyle.color },
+        // 小扇区标签防重叠：小于 6°（约 1.7%）不出标签，仍重叠的自动隐藏
+        minShowLabelAngle: 6,
+        labelLayout: { hideOverlap: true },
+      }],
+    }
   })
   // v-show 隐藏容器初始化为 0×0，数据到达显示后需 nextTick + resize（Task 6 评审已知修正）
   nextTick(resizePie)
@@ -252,35 +264,41 @@ watch(drill, renderPie)
 /** 账户总览（UC-5.6）：数据源为 GET /api/accounts（P1 已提供），当前快照不随时间筛选变化 */
 function renderAccountsOverview() {
   const items = accSummary.accounts
-  setBar({
-    tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, valueFormatter: v => money(v) },
-    grid: { left: 90, right: 40, top: 10, bottom: 26 },
-    xAxis: { type: 'value' },
-    yAxis: { type: 'category', data: items.map(a => a.name) },
-    series: [{
-      type: 'bar',
-      barMaxWidth: 22,
-      data: items.map(a => Number(a.balance)),
-      itemStyle: { color: p => (p.value < 0 ? themeColor('--bw-expense', '#e8684a') : themeColor('--bw-primary', '#f28c38')), borderRadius: [0, 6, 6, 0] },
-      label: { show: true, position: 'right', fontSize: 11, formatter: p => money(p.value) },
-    }],
+  setBar(() => {
+    const ct = chartTheme()
+    return {
+      tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, valueFormatter: v => money(v) },
+      grid: { left: 90, right: 40, top: 10, bottom: 26 },
+      xAxis: { type: 'value', ...ct.valueAxis },
+      yAxis: { type: 'category', ...ct.categoryAxis, data: items.map(a => a.name) },
+      series: [{
+        type: 'bar',
+        barMaxWidth: 22,
+        data: items.map(a => Number(a.balance)),
+        itemStyle: { color: p => (p.value < 0 ? themeColor('--bw-expense', '#e8684a') : themeColor('--bw-primary', '#f28c38')), borderRadius: [0, 6, 6, 0] },
+        label: { show: true, position: 'right', fontSize: 11, color: ct.legendText.textStyle.color, formatter: p => money(p.value) },
+      }],
+    }
   })
   // 账户数据到达使 v-show 翻转可见后，DOM 更新后 resize 保证尺寸正确
   nextTick(() => { resizeBar(); if (!ratioEmpty.value) resizeRatio() })
   if (ratioEmpty.value) return
-  setRatio({
-    tooltip: { trigger: 'item', valueFormatter: v => money(v) },
-    legend: { bottom: 0 },
-    series: [{
-      type: 'pie',
-      radius: ['35%', '60%'],
-      center: ['50%', '42%'],
-      data: [
-        { name: '资产', value: Number(accSummary.assetTotal), itemStyle: { color: themeColor('--bw-income', '#3fa37a') } },
-        { name: '负债', value: Number(accSummary.liabilityTotal), itemStyle: { color: themeColor('--bw-expense', '#e8684a') } },
-      ],
-      label: { formatter: '{b}\n{d}%' },
-    }],
+  setRatio(() => {
+    const ct = chartTheme()
+    return {
+      tooltip: { trigger: 'item', valueFormatter: v => money(v) },
+      legend: { ...ct.legendText, bottom: 0 },
+      series: [{
+        type: 'pie',
+        radius: ['35%', '60%'],
+        center: ['50%', '42%'],
+        data: [
+          { name: '资产', value: Number(accSummary.assetTotal), itemStyle: { color: themeColor('--bw-income', '#3fa37a') } },
+          { name: '负债', value: Number(accSummary.liabilityTotal), itemStyle: { color: themeColor('--bw-expense', '#e8684a') } },
+        ],
+        label: { formatter: '{b}\n{d}%', color: ct.legendText.textStyle.color },
+      }],
+    }
   })
 }
 </script>

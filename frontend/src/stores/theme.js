@@ -31,6 +31,8 @@ export const useThemeStore = defineStore('theme', {
       this.current = id
       localStorage.setItem(STORAGE_KEY, id)
       applyToDom(id)
+      // 通知 canvas 场景（ECharts）按新主题令牌重渲染
+      window.dispatchEvent(new Event('bw-theme-change'))
     },
   },
 })
