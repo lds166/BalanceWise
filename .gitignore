@@ -29,3 +29,6 @@ logs/
 # 本地运行日志
 dev-server.log
 frontend/dev-server.log
+
+# ZCode 会话元数据（计划/代理状态等，不属于仓库内容）
+.zcode/
