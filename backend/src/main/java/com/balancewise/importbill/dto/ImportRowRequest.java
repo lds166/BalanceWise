@@ -26,4 +26,10 @@ public class ImportRowRequest {
     private String counterparty;
     private String item;
     private String externalId;
+    /** 付款方式原文（回传自预览行），仅用于账户记忆学习 */
+    private String payMethod;
+    /** 用户在预览中修改了分类且勾选"记住"：确认后沉淀分类记忆 */
+    private Boolean learnCategory;
+    /** 用户在预览中修改了账户且勾选"记住"：确认后沉淀账户记忆 */
+    private Boolean learnAccount;
 }

@@ -1,4 +1,4 @@
--- BalanceWise 建表脚本（user / account / category / transaction_record / import_batch 共 5 张表）
+-- BalanceWise 建表脚本（user / account / category / transaction_record / import_batch / import_alias 共 6 张表）
 -- MySQL 环境请优先使用 sql/init-mysql.sql（建库 balancewisedb + 建表 + 可选演示数据）。
 -- 注意：本文件同时被测试环境的 H2 内存库（MODE=MySQL）加载初始化，
 --       因此不能包含 CREATE DATABASE / USE 等 H2 不支持的语句。
@@ -75,3 +75,18 @@ CREATE TABLE IF NOT EXISTS import_batch (
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX idx_batch_user ON import_batch(user_id);
+
+CREATE TABLE IF NOT EXISTS import_alias (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  user_id BIGINT NOT NULL,
+  alias_type VARCHAR(10) NOT NULL,
+  kind VARCHAR(10) NOT NULL DEFAULT 'any',
+  alias_text VARCHAR(128) NOT NULL,
+  target_id BIGINT NOT NULL,
+  target_name VARCHAR(64) NOT NULL,
+  hit_count INT NOT NULL DEFAULT 0,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE UNIQUE INDEX uk_alias_user_type_text ON import_alias(user_id, alias_type, alias_text, kind);
+CREATE INDEX idx_alias_user ON import_alias(user_id);

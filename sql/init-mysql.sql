@@ -4,9 +4,9 @@
 -- 适用版本 : MySQL 8.x（5.7+ 兼容）
 -- 执行方式 : mysql -u root -p --default-character-set=utf8mb4 < sql/init-mysql.sql
 --            （或在此文件于 Navicat / DataGrip / IDEA Database 等工具中直接运行）
--- 脚本内容 : ① 建库（utf8mb4）→ ② 五张业务表（含注释/索引/时间戳自动更新）→ ③ 演示数据（可选）
+-- 脚本内容 : ① 建库（utf8mb4）→ ② 六张业务表（含注释/索引/时间戳自动更新）→ ③ 演示数据（可选）
 --
--- ⚠ 重复执行会先 DROP 五张业务表再重建，库内已有数据将被清空，请确认后再执行。
+-- ⚠ 重复执行会先 DROP 六张业务表再重建，库内已有数据将被清空，请确认后再执行。
 -- 说明 : backend/src/main/resources/schema.sql 为 H2 内存库（单元测试）专用的最小结构；
 --        本脚本是 MySQL 环境的正式全量初始化脚本，表结构与 schema.sql 字段一一对应，
 --        差异仅在于：本脚本带 ON UPDATE CURRENT_TIMESTAMP（应用无自动填充，
@@ -35,6 +35,7 @@ DROP TABLE IF EXISTS account;
 DROP TABLE IF EXISTS category;
 DROP TABLE IF EXISTS transaction_record;
 DROP TABLE IF EXISTS import_batch;
+DROP TABLE IF EXISTS import_alias;
 
 -- ------------------------------------------------------------------
 -- ② 建表（五张业务表）
@@ -123,6 +124,25 @@ CREATE TABLE import_batch (
   PRIMARY KEY (id),
   KEY idx_batch_user (user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='账单导入批次表';
+
+-- 导入映射记忆表：用户在导入预览中修正分类/账户并勾选"记住"后沉淀的个人映射
+-- （UC-4.10），下次导入优先于内置规则命中。kind 进唯一键：同一商户可同时存在
+-- 支出/收入两条记忆（退款行不会被支出记忆污染）；账户映射统一 kind='any'。
+CREATE TABLE import_alias (
+  id          BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键',
+  user_id     BIGINT       NOT NULL                COMMENT '所属用户 id',
+  alias_type  VARCHAR(10)  NOT NULL                COMMENT '记忆类型：category 分类映射 / account 付款方式→账户',
+  kind        VARCHAR(10)  NOT NULL DEFAULT 'any'  COMMENT '分类映射存 expense/income；账户映射统一 any',
+  alias_text  VARCHAR(128) NOT NULL                COMMENT '记忆文本：分类=对方（为空取商品名）；账户=付款方式原文',
+  target_id   BIGINT       NOT NULL                COMMENT '目标 id：category.id 或 account.id',
+  target_name VARCHAR(64)  NOT NULL                COMMENT '目标名称快照（记忆管理列表展示用）',
+  hit_count   INT          NOT NULL DEFAULT 0      COMMENT '累计命中次数',
+  created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  updated_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_alias_user_type_text (user_id, alias_type, alias_text, kind),
+  KEY idx_alias_user (user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='导入映射记忆表';
 
 SET FOREIGN_KEY_CHECKS = 1;
 

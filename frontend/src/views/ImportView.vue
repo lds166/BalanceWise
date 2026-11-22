@@ -32,8 +32,11 @@
           <template #header>
             <div class="card-head">
               <span>预览（{{ preview.rows.length }} 条，丢弃 {{ preview.dropped.length }} 条）</span>
-              <el-button type="primary" :disabled="!checkedCount" :loading="confirming"
-                         @click="confirm">确认入账（{{ checkedCount }} 条）</el-button>
+              <div class="confirm-bar">
+                <el-checkbox v-model="remember" size="small">记住本次修改（下次自动套用）</el-checkbox>
+                <el-button type="primary" :disabled="!checkedCount" :loading="confirming"
+                           @click="confirm">确认入账（{{ checkedCount }} 条）</el-button>
+              </div>
             </div>
           </template>
           <el-empty v-if="!preview.rows.length && !preview.dropped.length"
@@ -62,7 +65,8 @@
               <template #default="{ row }">
                 <el-cascader v-if="row.type !== 'transfer'" v-model="row.categoryId"
                              :options="optionsOf(row.type)" :props="cascaderProps"
-                             filterable clearable placeholder="未分类" size="small" style="width: 100%" />
+                             filterable clearable placeholder="未分类" size="small" style="width: 100%"
+                             @change="row.catEdited = true" />
                 <span v-else class="muted">—</span>
               </template>
             </el-table-column>
@@ -70,11 +74,12 @@
               <template #default="{ row }">
                 <div class="acc-cell">
                   <el-select v-if="row.type !== 'income'" v-model="row.fromAccountId" filterable size="small"
-                             placeholder="转出/支出账户" style="width: 100px">
+                             placeholder="转出/支出账户" style="width: 100px" @change="row.acctEdited = true">
                     <el-option v-for="a in accounts" :key="a.id" :label="a.name" :value="a.id" />
                   </el-select>
                   <el-select v-if="row.type !== 'expense'" v-model="row.toAccountId" filterable size="small"
-                             :placeholder="row.type === 'transfer' ? '转入账户' : '收入账户'" style="width: 100px">
+                             :placeholder="row.type === 'transfer' ? '转入账户' : '收入账户'" style="width: 100px"
+                             @change="row.acctEdited = true">
                     <el-option v-for="a in accounts" :key="a.id" :label="a.name" :value="a.id" />
                   </el-select>
                 </div>
@@ -120,6 +125,35 @@
               </template>
             </el-table-column>
             <template #empty><el-empty description="暂无导入批次" :image-size="60" /></template>
+          </el-table>
+        </el-card>
+      </el-tab-pane>
+
+      <el-tab-pane label="映射记忆" name="aliases">
+        <el-card>
+          <div class="muted" style="margin-bottom: 8px">
+            导入预览中修正分类/账户并勾选「记住」后会沉淀在这里，下次导入自动套用（优先于关键词规则）；误记的条目可在此删除。
+          </div>
+          <el-table :data="aliases" size="small">
+            <el-table-column label="类型" width="80">
+              <template #default="{ row }">
+                <el-tag size="small" :type="row.aliasType === 'category' ? 'success' : 'primary'">
+                  {{ row.aliasType === 'category' ? '分类' : '账户' }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="aliasText" label="记忆内容" min-width="180" show-overflow-tooltip />
+            <el-table-column prop="targetName" label="套用目标" min-width="140" show-overflow-tooltip />
+            <el-table-column prop="hitCount" label="命中次数" width="90" align="right" />
+            <el-table-column label="更新时间" prop="updatedAt" width="165" :formatter="fmtTimeCol" />
+            <el-table-column label="操作" width="80">
+              <template #default="{ row }">
+                <el-button size="small" text type="danger" @click="removeAlias(row)">删除</el-button>
+              </template>
+            </el-table-column>
+            <template #empty>
+              <el-empty description="暂无映射记忆（在导入预览中修正并勾选「记住」后生成）" :image-size="60" />
+            </template>
           </el-table>
         </el-card>
       </el-tab-pane>
@@ -172,6 +206,8 @@ const parsing = ref(false)
 const confirming = ref(false)
 const preview = reactive({ fileName: '', rows: [], dropped: [], show: false })
 const batches = ref([])
+const aliases = ref([])
+const remember = ref(true)
 
 const optionsOf = type => (type === 'income' ? incomeTree.value : expenseTree.value)
 const checkedCount = computed(() => preview.rows.filter(r => r.checked && !r.duplicate).length)
@@ -207,7 +243,7 @@ onMounted(async () => {
   accounts.value = acc.data.accounts.filter(a => !a.isArchived)
   expenseTree.value = exp.data
   incomeTree.value = inc.data
-  await loadBatches()
+  await Promise.all([loadBatches(), loadAliases()])
 })
 
 async function parse() {
@@ -246,6 +282,9 @@ async function confirm() {
         categoryId: r.type === 'transfer' ? null : r.categoryId,
         fromAccountId: r.type === 'income' ? null : r.fromAccountId,
         toAccountId: r.type === 'expense' ? null : r.toAccountId,
+        payMethod: r.payMethod,
+        learnCategory: remember.value && !!r.catEdited && r.type !== 'transfer',
+        learnAccount: remember.value && !!r.acctEdited,
       })),
     })
     ElMessage.success('批次已入账')
@@ -264,6 +303,22 @@ async function confirm() {
 async function loadBatches() {
   const res = await request.get('/imports')
   batches.value = res.data
+}
+
+async function loadAliases() {
+  const res = await request.get('/imports/aliases')
+  aliases.value = res.data
+}
+
+async function removeAlias(row) {
+  try {
+    await ElMessageBox.confirm(
+      `删除这条记忆「${row.aliasText} → ${row.targetName}」？删除后下次导入不再自动套用。`,
+      '删除记忆', { type: 'warning' })
+  } catch { return }
+  await request.delete(`/imports/aliases/${row.id}`)
+  ElMessage.success('记忆已删除')
+  await loadAliases()
 }
 
 const detail = reactive({ visible: false, records: [] })
@@ -288,6 +343,7 @@ async function rollback(row) {
 
 <style scoped>
 .card-head { display: flex; justify-content: space-between; align-items: center; }
+.confirm-bar { display: flex; align-items: center; gap: 12px; }
 .acc-cell { display: flex; gap: 6px; }
 .muted { color: var(--bw-text-secondary); font-size: 12px; }
 :deep(.missing-row) { background: var(--el-color-warning-light-9); }

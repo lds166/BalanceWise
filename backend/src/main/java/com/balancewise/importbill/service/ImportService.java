@@ -30,13 +30,15 @@ import java.util.stream.Collectors;
 
 /**
  * 账单导入编排（UC-4.1~4.7 预览侧）。
- * 预览不落库：解析 → 清洗 → 类型识别 → 分类映射 → 账户匹配 → 重复检测（库中 is_deleted=0 同源 + 批内），返回预览行。
+ * 预览不落库：解析 → 清洗 → 类型识别 → 分类匹配流水线（记忆→规则，AI 层见 AiClassifier）→ 账户匹配
+ * → 重复检测（库中 is_deleted=0 同源 + 批内），返回预览行。
  */
 @Service
 public class ImportService {
 
     private final Map<String, BillParser> parsers;
     private final CategoryMappingService categoryMappingService;
+    private final ImportAliasService importAliasService;
     private final AccountMatcher accountMatcher;
     private final TransactionRecordMapper transactionRecordMapper;
     private final ImportBatchMapper importBatchMapper;
@@ -44,12 +46,14 @@ public class ImportService {
 
     public ImportService(List<BillParser> parserList,
                          CategoryMappingService categoryMappingService,
+                         ImportAliasService importAliasService,
                          AccountMatcher accountMatcher,
                          TransactionRecordMapper transactionRecordMapper,
                          ImportBatchMapper importBatchMapper,
                          TransactionService transactionService) {
         this.parsers = parserList.stream().collect(Collectors.toMap(BillParser::platform, Function.identity()));
         this.categoryMappingService = categoryMappingService;
+        this.importAliasService = importAliasService;
         this.accountMatcher = accountMatcher;
         this.transactionRecordMapper = transactionRecordMapper;
         this.importBatchMapper = importBatchMapper;
@@ -77,8 +81,20 @@ public class ImportService {
             row.setOccurredAt(r.getOccurredAt());
             row.setCounterparty(r.getCounterparty());
             row.setItem(r.getItem());
-            row.setCategoryId(categoryMappingService.mapCategoryId(
-                    userId, r.getType(), r.getPlatformCategory(), r.getItem()));
+            row.setPlatformCategory(r.getPlatformCategory());
+            row.setPayMethod(r.getPayMethod());
+            // 分类匹配流水线第 1/2 层：记忆 → 关键词规则（AI 第 3 层由 AiClassifier 在此外插）
+            String kind = "expense".equals(r.getType()) ? "expense" : "income";
+            Long memoryCat = importAliasService.matchMemoryCategory(userId, kind, r.getCounterparty(), r.getItem());
+            if (memoryCat != null) {
+                row.setCategoryId(memoryCat);
+                row.setMatchSource("memory");
+            } else {
+                Long ruleCat = categoryMappingService.mapCategoryId(
+                        userId, r.getType(), r.getPlatformCategory(), r.getItem());
+                row.setCategoryId(ruleCat);
+                row.setMatchSource(ruleCat != null ? "rule" : null);
+            }
             Account acc = accountMatcher.match(userId, r.getPayMethod(), defaultAccountId);
             if (acc != null) {
                 row.setAccountName(acc.getName());
@@ -153,7 +169,23 @@ public class ImportService {
             transactionService.importRecord(userId, req.getPlatform(), row.getExternalId(),
                     batch.getId(), txn);
         }
+        // 学习用户修正（UC-4.10，与入账同事务）：勾选"记住"的行沉淀为个人映射，下次导入优先命中
+        for (ImportRowRequest row : req.getRows()) {
+            if (Boolean.TRUE.equals(row.getLearnCategory()) && row.getCategoryId() != null
+                    && !"transfer".equals(row.getType())) {
+                importAliasService.learnCategory(userId, kindOf(row.getType()),
+                        row.getCounterparty(), row.getItem(), row.getCategoryId());
+            }
+            if (Boolean.TRUE.equals(row.getLearnAccount())) {
+                Long accId = "income".equals(row.getType()) ? row.getToAccountId() : row.getFromAccountId();
+                importAliasService.learnAccount(userId, row.getPayMethod(), accId);
+            }
+        }
         return batch;
+    }
+
+    private String kindOf(String type) {
+        return "expense".equals(type) ? "expense" : "income";
     }
 
     /** 库中已存在的同源未删除 external_id（§5.4 规则 4：应用层重复检测） */
