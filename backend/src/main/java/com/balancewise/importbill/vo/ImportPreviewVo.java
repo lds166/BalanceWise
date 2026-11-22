@@ -11,4 +11,6 @@ public class ImportPreviewVo {
     private String fileName;
     private List<ImportPreviewRow> rows;
     private List<String> dropped;
+    /** 非阻断性提示（如 AI 分类降级/截断说明），前端以 info 条展示 */
+    private String notice;
 }

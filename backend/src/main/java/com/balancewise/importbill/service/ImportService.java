@@ -2,7 +2,10 @@ package com.balancewise.importbill.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.balancewise.account.entity.Account;
+import com.balancewise.category.entity.Category;
+import com.balancewise.category.mapper.CategoryMapper;
 import com.balancewise.common.BizException;
+import com.balancewise.importbill.ai.AiClassifier;
 import com.balancewise.importbill.dto.ImportConfirmRequest;
 import com.balancewise.importbill.dto.ImportPreviewRow;
 import com.balancewise.importbill.dto.ImportRowRequest;
@@ -31,8 +34,8 @@ import java.util.stream.Collectors;
 
 /**
  * 账单导入编排（UC-4.1~4.7 预览侧）。
- * 预览不落库：解析 → 清洗 → 类型识别 → 分类匹配流水线（记忆→规则，AI 层见 AiClassifier）→ 账户匹配
- * → 重复检测（库中 is_deleted=0 同源 + 批内），返回预览行。
+ * 预览不落库：解析 → 清洗 → 类型识别 → 分类匹配流水线（记忆→规则→AI）→ 账户匹配
+ * → 重复检测（库中 is_deleted=0 同源 + 批内 + 疑似重复），返回预览行。
  */
 @Service
 public class ImportService {
@@ -44,6 +47,8 @@ public class ImportService {
     private final TransactionRecordMapper transactionRecordMapper;
     private final ImportBatchMapper importBatchMapper;
     private final TransactionService transactionService;
+    private final CategoryMapper categoryMapper;
+    private final AiClassifier aiClassifier;
 
     public ImportService(List<BillParser> parserList,
                          CategoryMappingService categoryMappingService,
@@ -51,7 +56,9 @@ public class ImportService {
                          AccountMatcher accountMatcher,
                          TransactionRecordMapper transactionRecordMapper,
                          ImportBatchMapper importBatchMapper,
-                         TransactionService transactionService) {
+                         TransactionService transactionService,
+                         CategoryMapper categoryMapper,
+                         AiClassifier aiClassifier) {
         this.parsers = parserList.stream().collect(Collectors.toMap(BillParser::platform, Function.identity()));
         this.categoryMappingService = categoryMappingService;
         this.importAliasService = importAliasService;
@@ -59,6 +66,8 @@ public class ImportService {
         this.transactionRecordMapper = transactionRecordMapper;
         this.importBatchMapper = importBatchMapper;
         this.transactionService = transactionService;
+        this.categoryMapper = categoryMapper;
+        this.aiClassifier = aiClassifier;
     }
 
     public ImportPreviewVo preview(Long userId, String platform, byte[] content, Long defaultAccountId) {
@@ -116,7 +125,39 @@ public class ImportService {
         vo.setRows(rows);
         vo.setDropped(parsed.getDropped());
         markDuplicateSuspects(userId, rows);
+        applyAiClassification(userId, vo, rows);
         return vo;
+    }
+
+    /** 分类流水线第 3 层：AI 推荐（仅记忆/规则未命中的非转账行）；未启用/异常自动降级，绝不阻断导入 */
+    private void applyAiClassification(Long userId, ImportPreviewVo vo, List<ImportPreviewRow> rows) {
+        List<ImportPreviewRow> pending = rows.stream()
+                .filter(r -> r.getCategoryId() == null && !"transfer".equals(r.getType()))
+                .toList();
+        if (pending.isEmpty() || !aiClassifier.usable()) {
+            return;
+        }
+        if (pending.size() > aiClassifier.getMaxRows()) {
+            pending = pending.subList(0, aiClassifier.getMaxRows());
+            vo.setNotice("待分类流水过多，AI 仅处理前 " + aiClassifier.getMaxRows() + " 条，其余请手动分类");
+        }
+        AiClassifier.AiOutcome outcome = aiClassifier.classify(userId, userCategories(userId), pending);
+        if (outcome.error() != null) {
+            vo.setNotice("AI 分类暂不可用，本次已跳过，可稍后重试或手动分类");
+            return;
+        }
+        for (ImportPreviewRow row : pending) {
+            Long catId = outcome.hits().get(row.getLineNo());
+            if (catId != null) {
+                row.setCategoryId(catId);
+                row.setMatchSource("ai");
+            }
+        }
+    }
+
+    private List<Category> userCategories(Long userId) {
+        return categoryMapper.selectList(new LambdaQueryWrapper<Category>()
+                .eq(Category::getUserId, userId));
     }
 
     /** 疑似重复判定窗口：金额相同、类型相同、时间相差 ≤5 分钟 */

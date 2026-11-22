@@ -25,3 +25,14 @@ jwt:
   expire-hours: 72
 cors:
   allowed-origins: http://localhost:5173
+# AI 账单分类（OpenAI 兼容接口，默认硅基流动；换厂商只改 base-url/model）
+# api-key 通过环境变量 AI_API_KEY 注入；未配置时自动降级为记忆+规则两层，导入不受影响
+balancewise:
+  ai:
+    enabled: true
+    base-url: https://api.siliconflow.cn/v1
+    api-key: ${AI_API_KEY:}
+    model: Qwen/Qwen2.5-7B-Instruct
+    timeout-ms: 15000
+    confidence-threshold: 0.6
+    max-rows: 300

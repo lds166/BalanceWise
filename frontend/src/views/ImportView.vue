@@ -44,6 +44,8 @@
           <div v-if="preview.dropped.length" class="muted" style="margin-bottom: 8px">
             丢弃：{{ droppedPreview }}<template v-if="preview.dropped.length > 3">；等共 {{ preview.dropped.length }} 条</template>
           </div>
+          <el-alert v-if="preview.notice" :title="preview.notice" type="info" :closable="false"
+                    style="margin-bottom: 8px" />
           <el-table v-if="preview.rows.length" :data="preview.rows" size="small" max-height="480"
                     :row-class-name="rowClass">
             <el-table-column label="时间" prop="occurredAt" width="160" :formatter="fmtTimeCol" />
@@ -61,12 +63,19 @@
             <el-table-column label="商品" prop="item" width="140" show-overflow-tooltip>
               <template #default="{ row }">{{ row.item || '—' }}</template>
             </el-table-column>
-            <el-table-column label="分类" width="160">
+            <el-table-column label="分类" width="170">
               <template #default="{ row }">
-                <el-cascader v-if="row.type !== 'transfer'" v-model="row.categoryId"
-                             :options="optionsOf(row.type)" :props="cascaderProps"
-                             filterable clearable placeholder="未分类" size="small" style="width: 100%"
-                             @change="row.catEdited = true" />
+                <div v-if="row.type !== 'transfer'" class="cat-cell">
+                  <el-tooltip v-if="row.matchSource === 'ai'"
+                              content="AI 推荐分类，可修改；修改并勾选「记住」后会沉淀为你的个人映射"
+                              placement="top">
+                    <el-tag size="small" type="info" effect="plain">AI</el-tag>
+                  </el-tooltip>
+                  <el-cascader v-model="row.categoryId"
+                               :options="optionsOf(row.type)" :props="cascaderProps"
+                               filterable clearable placeholder="未分类" size="small" style="flex: 1"
+                               @change="row.catEdited = true" />
+                </div>
                 <span v-else class="muted">—</span>
               </template>
             </el-table-column>
@@ -208,7 +217,7 @@ const pickedFile = ref(null)
 const form = reactive({ platform: 'alipay', defaultAccountId: null })
 const parsing = ref(false)
 const confirming = ref(false)
-const preview = reactive({ fileName: '', rows: [], dropped: [], show: false })
+const preview = reactive({ fileName: '', rows: [], dropped: [], notice: '', show: false })
 const batches = ref([])
 const aliases = ref([])
 const remember = ref(true)
@@ -261,6 +270,7 @@ async function parse() {
     const res = await request.post('/imports/preview', fd)
     preview.fileName = res.data.fileName
     preview.dropped = res.data.dropped
+    preview.notice = res.data.notice || ''
     preview.rows = res.data.rows.map(r => ({ ...r, checked: !r.duplicate && !r.duplicateSuspect }))
     preview.show = true
     if (!res.data.rows.length) ElMessage.warning('没有可导入的流水')
@@ -294,6 +304,7 @@ async function confirm() {
     ElMessage.success('批次已入账')
     preview.rows = []
     preview.dropped = []
+    preview.notice = ''
     preview.show = false
     uploadRef.value.clearFiles()
     pickedFile.value = null
@@ -348,6 +359,7 @@ async function rollback(row) {
 <style scoped>
 .card-head { display: flex; justify-content: space-between; align-items: center; }
 .confirm-bar { display: flex; align-items: center; gap: 12px; }
+.cat-cell { display: flex; align-items: center; gap: 4px; width: 100%; }
 .acc-cell { display: flex; gap: 6px; }
 .muted { color: var(--bw-text-secondary); font-size: 12px; }
 :deep(.missing-row) { background: var(--el-color-warning-light-9); }
