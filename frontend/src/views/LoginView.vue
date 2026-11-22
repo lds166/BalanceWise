@@ -1,7 +1,5 @@
 <template>
   <div class="auth-wrap">
-    <button class="theme-corner" title="切换主题" @click="cycleTheme">{{ themeEmoji }}</button>
-
     <div class="auth-card">
       <div class="brand">
         <div class="logo">🌿</div>
@@ -26,26 +24,15 @@
 </template>
 
 <script setup>
-import { computed, reactive, ref } from 'vue'
+import { reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useUserStore } from '../stores/user'
-import { useThemeStore } from '../stores/theme'
 
 const router = useRouter()
 const store = useUserStore()
-const theme = useThemeStore()
 const loading = ref(false)
 const form = reactive({ username: '', password: '' })
-
-const THEME_EMOJI = { journal: '🍊', mint: '🌿', morandi: '🌸', night: '🌙' }
-const themeEmoji = computed(() => THEME_EMOJI[theme.current] || '🎨')
-
-function cycleTheme() {
-  const list = theme.themes
-  const idx = list.findIndex(t => t.id === theme.current)
-  theme.setTheme(list[(idx + 1) % list.length].id)
-}
 
 async function submit() {
   if (!form.username || !form.password) {
@@ -77,13 +64,6 @@ async function submit() {
 .auth-wrap::before { width: 340px; height: 340px; background: var(--bw-primary-soft); top: -80px; left: -80px; }
 .auth-wrap::after { width: 280px; height: 280px; background: var(--bw-income-soft); bottom: -60px; right: -60px; }
 
-.theme-corner {
-  position: absolute; top: 20px; right: 20px; z-index: 5;
-  width: 42px; height: 42px; border-radius: 50%; font-size: 19px;
-  border: 1px solid var(--bw-border); background: var(--bw-card); cursor: pointer;
-  box-shadow: var(--bw-shadow);
-}
-.theme-corner:hover { border-color: var(--bw-primary); }
 
 .auth-card {
   position: relative; z-index: 1;

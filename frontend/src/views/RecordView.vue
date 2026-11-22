@@ -56,7 +56,8 @@
           </div>
         </el-form-item>
         <el-form-item label="时间">
-          <el-date-picker v-model="form.occurredAt" type="datetime" style="width: 100%" />
+          <el-date-picker v-model="form.occurredAt" type="datetime" format="YYYY-MM-DD HH:mm"
+                          time-format="HH:mm" style="width: 100%" />
         </el-form-item>
         <el-form-item label="对方">
           <el-input v-model="form.counterparty" maxlength="128" placeholder="选填" />

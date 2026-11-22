@@ -12,7 +12,7 @@
         </template>
         <div v-for="g in expenseTree" :key="g.id" class="cat-group">
           <div class="cat-parent">
-            <span>{{ g.name }} <el-tag v-if="g.isSystem === 1" size="small" type="info" style="margin-left:6px">预置</el-tag></span>
+            <span class="cat-name"><span class="cat-emoji">{{ categoryEmoji(g.name, 'expense') }}</span>{{ g.name }} <el-tag v-if="g.isSystem === 1" size="small" type="info" style="margin-left:6px">预置</el-tag></span>
             <span>
               <el-button size="small" text @click="openCreate('expense', g)">＋子类</el-button>
               <el-button size="small" text @click="openRename(g)">改名</el-button>
@@ -21,7 +21,7 @@
           </div>
           <div class="cat-children">
             <span v-for="c in g.children" :key="c.id" class="cat-child">
-              {{ c.name }}
+              <span class="cat-emoji">{{ categoryEmoji(c.name, 'expense') }}</span>{{ c.name }}
               <span class="child-ops">
                 <el-button size="small" text @click="openRename(c)">改名</el-button>
                 <el-button size="small" text type="danger" @click="remove(c)">删除</el-button>
@@ -42,7 +42,7 @@
         </template>
         <div v-for="g in incomeTree" :key="g.id" class="cat-group">
           <div class="cat-parent">
-            <span>{{ g.name }} <el-tag v-if="g.isSystem === 1" size="small" type="info" style="margin-left:6px">预置</el-tag></span>
+            <span class="cat-name"><span class="cat-emoji">{{ categoryEmoji(g.name, 'income') }}</span>{{ g.name }} <el-tag v-if="g.isSystem === 1" size="small" type="info" style="margin-left:6px">预置</el-tag></span>
             <span>
               <el-button size="small" text @click="openCreate('income', g)">＋子类</el-button>
               <el-button size="small" text @click="openRename(g)">改名</el-button>
@@ -51,7 +51,7 @@
           </div>
           <div class="cat-children">
             <span v-for="c in g.children" :key="c.id" class="cat-child">
-              {{ c.name }}
+              <span class="cat-emoji">{{ categoryEmoji(c.name, 'income') }}</span>{{ c.name }}
               <span class="child-ops">
                 <el-button size="small" text @click="openRename(c)">改名</el-button>
                 <el-button size="small" text type="danger" @click="remove(c)">删除</el-button>
@@ -78,6 +78,7 @@
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import request from '../api/request'
+import { categoryEmoji } from '../utils/emoji'
 
 const expenseTree = ref([])
 const incomeTree = ref([])
@@ -142,8 +143,10 @@ onMounted(load)
   display: flex; justify-content: space-between; align-items: center;
   padding: 8px 10px; background: var(--bw-bg); border-radius: 10px; font-weight: 600;
 }
+.cat-name { display: inline-flex; align-items: center; gap: 6px; }
+.cat-emoji { font-size: 15px; }
 .cat-children { padding: 6px 0 0 16px; display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; }
-.cat-child { color: var(--bw-text-secondary); font-size: 13px; }
+.cat-child { color: var(--bw-text-secondary); font-size: 13px; display: inline-flex; align-items: center; gap: 4px; }
 /* 子分类操作 hover 才出现：整页 50+ 个红字"改名/删除"是主要视觉噪音源 */
 .child-ops { display: inline-flex; opacity: 0; transition: opacity 0.15s ease; }
 .cat-child:hover .child-ops { opacity: 1; }
