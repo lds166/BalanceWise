@@ -21,8 +21,10 @@
           <div class="cat-children">
             <span v-for="c in g.children" :key="c.id" class="cat-child">
               {{ c.name }}
-              <el-button size="small" text @click="openRename(c)">改名</el-button>
-              <el-button size="small" text type="danger" @click="remove(c)">删除</el-button>
+              <span class="child-ops">
+                <el-button size="small" text @click="openRename(c)">改名</el-button>
+                <el-button size="small" text type="danger" @click="remove(c)">删除</el-button>
+              </span>
             </span>
             <span v-if="!g.children.length" class="muted">（无子分类）</span>
           </div>
@@ -49,8 +51,10 @@
           <div class="cat-children">
             <span v-for="c in g.children" :key="c.id" class="cat-child">
               {{ c.name }}
-              <el-button size="small" text @click="openRename(c)">改名</el-button>
-              <el-button size="small" text type="danger" @click="remove(c)">删除</el-button>
+              <span class="child-ops">
+                <el-button size="small" text @click="openRename(c)">改名</el-button>
+                <el-button size="small" text type="danger" @click="remove(c)">删除</el-button>
+              </span>
             </span>
             <span v-if="!g.children.length" class="muted">（无子分类）</span>
           </div>
@@ -139,5 +143,9 @@ onMounted(load)
 }
 .cat-children { padding: 6px 0 0 16px; display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; }
 .cat-child { color: var(--bw-text-secondary); font-size: 13px; }
+/* 子分类操作 hover 才出现：整页 50+ 个红字"改名/删除"是主要视觉噪音源 */
+.child-ops { display: inline-flex; opacity: 0; transition: opacity 0.15s ease; }
+.cat-child:hover .child-ops { opacity: 1; }
+.cat-child:hover { color: var(--bw-text); }
 .muted { color: var(--bw-text-secondary); font-size: 12px; }
 </style>

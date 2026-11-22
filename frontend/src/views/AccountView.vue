@@ -214,6 +214,8 @@ const AccountRow = (props, { emit }) => {
   const acc = props.acc
   const label = (SUB_TYPES[acc.type] || {})[acc.subType] || acc.subType
   const display = acc.type === 'liability' ? -Number(acc.balance) : Number(acc.balance)
+  // 负债账户恒红（欠款语义）；资产账户透支（余额为负）同样标警示色
+  const warn = acc.type === 'liability' || Number(acc.balance) < 0
   return h('div', { class: 'acc-row' }, [
     h('div', null, [
       h('span', { class: 'acc-name' }, acc.name),
@@ -221,12 +223,13 @@ const AccountRow = (props, { emit }) => {
       acc.isArchived ? h(ElTag, { size: 'small', type: 'info', style: 'margin-left:6px' }, () => '已归档') : null,
     ]),
     h('div', { class: 'acc-ops' }, [
-      h('span', { class: ['acc-balance', acc.type === 'liability' ? 'expense' : ''] },
-        `¥${money(display)}`),
-      h(ElButton, { size: 'small', onClick: () => emit('reconcile', acc) }, () => '对账'),
-      h(ElButton, { size: 'small', onClick: () => emit('edit', acc) }, () => '编辑'),
-      h(ElButton, { size: 'small', onClick: () => emit('archive', acc) }, () => (acc.isArchived ? '恢复' : '归档')),
-      h(ElButton, { size: 'small', type: 'danger', plain: true, onClick: () => emit('remove', acc) }, () => '删除'),
+      h('span', { class: ['acc-balance', warn ? 'expense' : ''] }, `¥${money(display)}`),
+      h('div', { class: 'acc-btns' }, [
+        h(ElButton, { size: 'small', onClick: () => emit('reconcile', acc) }, () => '对账'),
+        h(ElButton, { size: 'small', onClick: () => emit('edit', acc) }, () => '编辑'),
+        h(ElButton, { size: 'small', onClick: () => emit('archive', acc) }, () => (acc.isArchived ? '恢复' : '归档')),
+        h(ElButton, { size: 'small', type: 'danger', plain: true, onClick: () => emit('remove', acc) }, () => '删除'),
+      ]),
     ]),
   ])
 }
@@ -261,6 +264,8 @@ onActivated(() => {
 :deep(.acc-row:last-child) { border-bottom: none; }
 :deep(.acc-name) { font-weight: 600; }
 :deep(.acc-ops) { display: flex; align-items: center; gap: 10px; }
+:deep(.acc-btns) { display: flex; align-items: center; gap: 10px; opacity: 0; transition: opacity 0.15s ease; }
+:deep(.acc-row:hover .acc-btns) { opacity: 1; }
 :deep(.acc-balance) { font-variant-numeric: tabular-nums; font-weight: 600; }
 :deep(.acc-balance.expense) { color: var(--bw-expense); }
 .recon-balance { font-weight: 600; font-variant-numeric: tabular-nums; }
