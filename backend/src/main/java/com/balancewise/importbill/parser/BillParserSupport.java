@@ -149,4 +149,61 @@ public final class BillParserSupport {
     public static LocalDateTime parseTime(String raw) {
         return LocalDateTime.parse(raw.trim(), DT);
     }
+
+    /**
+     * 提取表头前的官方汇总行（微信 xlsx / 支付宝电子回单自带），返回
+     * [收入笔数, 收入额(分), 支出笔数, 支出额(分), 中性笔数, 中性额(分)]；无汇总行返回 null。
+     * 支持「收入/支出/中性交易/不计收支」四种口径（微信叫中性交易，支付宝叫不计收支）。
+     */
+    public static long[] extractOfficialSummary(List<List<String>> rows, int headerIdx) {
+        java.util.regex.Pattern p = java.util.regex.Pattern
+                .compile("^(收入|支出|中性交易|不计收支)：(\\d+)笔\\s*([\\d,]+\\.?\\d*)元");
+        long[] out = null;
+        for (int i = 0; i < headerIdx; i++) {
+            String line = rows.get(i).isEmpty() ? "" : rows.get(i).get(0);
+            java.util.regex.Matcher m = p.matcher(line);
+            if (!m.matches()) {
+                continue;
+            }
+            if (out == null) {
+                out = new long[6];
+            }
+            int idx = "收入".equals(m.group(1)) ? 0 : "支出".equals(m.group(1)) ? 2 : 4;
+            out[idx] = Long.parseLong(m.group(2));
+            out[idx + 1] = new BigDecimal(m.group(3).replace(",", "")).movePointRight(2).longValue();
+        }
+        return out;
+    }
+
+    /** 官方汇总 vs 全量数据行毛额（含被丢弃行）逐项比对；金额严格模式（微信：汇总=行累加）不一致返回告警 */
+    public static String reconcileOfficial(long[] official, long[] counts, BigDecimal[] grossAmt, boolean amountStrict) {
+        if (official == null) {
+            return null;
+        }
+        String[] names = {"收入", "支出", "中性/不计收支"};
+        java.util.List<String> bad = new ArrayList<>();
+        java.util.List<String> info = new ArrayList<>();
+        for (int i = 0; i < 3; i++) {
+            long parsedAmt = grossAmt[i].movePointRight(2).longValue();
+            if (counts[i] != official[i * 2]) {
+                bad.add(names[i] + "解析 " + counts[i] + "笔 vs 官方 " + official[i * 2] + "笔");
+                continue;
+            }
+            if (parsedAmt != official[i * 2 + 1]) {
+                String diff = names[i] + "金额明细累加 " + grossAmt[i] + "元 vs 官方统计 "
+                        + official[i * 2 + 1] / 100.0 + "元（差 " + (parsedAmt - official[i * 2 + 1]) / 100.0 + "元）";
+                if (amountStrict) {
+                    bad.add(diff);
+                } else {
+                    info.add(diff + "，属官方统计口径差异（立减等优惠抵扣），以实际交易金额为准");
+                }
+            }
+        }
+        if (bad.isEmpty()) {
+            return "已与官方汇总核对一致（" + names[0] + " " + counts[0] + "笔、"
+                    + names[1] + " " + counts[1] + "笔、" + names[2] + " " + counts[2] + "笔），无漏行"
+                    + (info.isEmpty() ? "" : "；" + String.join("；", info));
+        }
+        return "警告：解析结果与官方汇总不一致——" + String.join("；", bad) + "，请确认文件完整或联系排查";
+    }
 }
