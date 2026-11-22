@@ -64,8 +64,10 @@
 
     <main class="content">
       <router-view v-slot="{ Component }">
-        <transition name="bw-route" mode="out-in">
-          <component :is="Component" />
+        <transition name="bw-route">
+          <keep-alive :include="keepAliveViews">
+            <component :is="Component" />
+          </keep-alive>
         </transition>
       </router-view>
     </main>
@@ -103,6 +105,13 @@ const menus = [
   { path: '/accounts', label: '账户', icon: CreditCard },
   { path: '/categories', label: '分类', icon: CollectionTag },
   { path: '/stats', label: '统计', icon: DataAnalysis },
+]
+
+// keep-alive 缓存的数据页（重访零加载闪屏；数据新鲜度由各页 onActivated 静默刷新保证）。
+// RecordView 不缓存：每次进入都应是干净的记一笔表单。
+const keepAliveViews = [
+  'DashboardView', 'TransactionsView', 'StatsView',
+  'AccountView', 'CategoryView', 'ImportView', 'UserCenterView',
 ]
 
 const isActive = path => route.path === path || (path !== '/dashboard' && route.path.startsWith(path))
@@ -172,12 +181,14 @@ function onUserCommand(cmd) {
   box-shadow: 0 4px 12px color-mix(in srgb, var(--bw-primary) 40%, transparent);
 }
 
-.content { padding-bottom: 96px; }
+.content { position: relative; padding-bottom: 96px; }
 
-/* 路由切换轻过渡：掩掉硬切的"闪一下"，保持敏捷（总时长 ~0.28s） */
+/* 路由交叉淡入淡出（不用 mode=out-in：那会在旧页淡出与新页挂载之间留出空白帧）。
+   离场页绝对定位让其不参与布局，新页立即就位并开始加载数据，二者重叠 0.12s 交叉渐变。 */
 .bw-route-enter-active,
-.bw-route-leave-active { transition: opacity 0.14s ease, transform 0.14s ease; }
-.bw-route-enter-from { opacity: 0; transform: translateY(6px); }
+.bw-route-leave-active { transition: opacity 0.12s ease; }
+.bw-route-leave-active { position: absolute; top: 0; left: 0; right: 0; }
+.bw-route-enter-from,
 .bw-route-leave-to { opacity: 0; }
 
 /* 悬浮记账按钮 */

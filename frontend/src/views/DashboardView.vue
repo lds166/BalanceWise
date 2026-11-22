@@ -68,7 +68,7 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onActivated, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import request from '../api/request'
 import { useChart } from '../composables/useChart'
@@ -121,6 +121,17 @@ onMounted(async () => {
   } finally {
     loading.value = false
   }
+})
+
+// keep-alive 重访：静默刷新数据（不动全页 loading，缓存的旧内容保持可见，绝不闪屏）。
+// onActivated 首次激活与 onMounted 重叠，跳过以避免重复请求。
+let dashboardFirstActivate = true
+onActivated(() => {
+  if (dashboardFirstActivate) {
+    dashboardFirstActivate = false
+    return
+  }
+  loadDashboard()
 })
 
 async function loadDashboard() {

@@ -96,7 +96,7 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onActivated, onMounted, reactive, ref, watch } from 'vue'
 import request from '../api/request'
 import { useChart } from '../composables/useChart'
 import { themeColor } from '../utils/themeColor'
@@ -169,6 +169,16 @@ onMounted(async () => {
   })
   renderAccountsOverview()
   await loadAll()
+})
+
+// keep-alive 重访：静默刷新图表数据（图表留在原地更新，不重播动画不闪屏）；首次激活跳过
+let statsFirstActivate = true
+onActivated(() => {
+  if (statsFirstActivate) {
+    statsFirstActivate = false
+    return
+  }
+  loadAll()
 })
 
 async function loadAll() {

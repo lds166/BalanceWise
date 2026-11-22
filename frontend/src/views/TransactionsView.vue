@@ -121,7 +121,7 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onActivated, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import request from '../api/request'
 
@@ -179,6 +179,16 @@ onMounted(async () => {
   incomeTree.value = inc.data
   restoreFilters()
   await load()
+})
+
+// keep-alive 重访：表格是半透明遮罩盖在缓存行上，重载不闪屏；首次激活与 onMounted 重叠跳过
+let txFirstActivate = true
+onActivated(() => {
+  if (txFirstActivate) {
+    txFirstActivate = false
+    return
+  }
+  load()
 })
 
 function params() {

@@ -98,7 +98,7 @@
 </template>
 
 <script setup>
-import { computed, h, onMounted, reactive } from 'vue'
+import { computed, h, onActivated, onMounted, reactive } from 'vue'
 import { ElButton, ElMessage, ElMessageBox, ElTag } from 'element-plus'
 import request from '../api/request'
 
@@ -234,6 +234,16 @@ AccountRow.props = { acc: { type: Object, required: true } }
 AccountRow.emits = ['reconcile', 'edit', 'archive', 'remove']
 
 onMounted(load)
+
+// keep-alive 重访：静默刷新余额（列表无全页遮罩，原地更新不闪屏）；首次激活跳过
+let accFirstActivate = true
+onActivated(() => {
+  if (accFirstActivate) {
+    accFirstActivate = false
+    return
+  }
+  load()
+})
 </script>
 
 <style scoped>
