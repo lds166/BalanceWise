@@ -1321,9 +1321,9 @@ sleep 45 && tail -3 work/p5-backend.log   # 等 Started BalanceWiseApplication
 ```bash
 # 自注册验收专用账号（注册即初始化预置分类+现金账户，不依赖任何既有账号；已存在则 400 不影响后续）
 curl -s -X POST http://localhost:8080/api/auth/register -H "Content-Type: application/json" \
-  -d '{"username":"p5e2e","password":"123456","confirmPassword":"123456","nickname":"P5验收"}'
+  -d '{"username":"admin","password":"123456","confirmPassword":"123456","nickname":"P5验收"}'
 curl -s -X POST http://localhost:8080/api/auth/login -H "Content-Type: application/json" \
-  -d '{"username":"p5e2e","password":"123456"}' > work/p5-login.json
+  -d '{"username":"admin","password":"123456"}' > work/p5-login.json
 TOKEN=$(python -c "import json;print(json.load(open('work/p5-login.json'))['data']['token'])")
 # 期望：login 返回 code=0 且 data.token 非空
 
@@ -1385,8 +1385,8 @@ powershell Get-CimInstance Win32_Process |
   ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
 
 # 清理验收账号及其全部数据（库终态干净；表间为逻辑外键，按 user_id 逐表删除）
-mysql -uroot -proot balancewise -e "SET @u=(SELECT id FROM user WHERE username='p5e2e'); DELETE FROM transaction_record WHERE user_id=@u; DELETE FROM import_batch WHERE user_id=@u; DELETE FROM account WHERE user_id=@u; DELETE FROM category WHERE user_id=@u; DELETE FROM user WHERE id=@u;"
-mysql -uroot -proot balancewise -e "SELECT COUNT(*) AS leftover FROM user WHERE username='p5e2e';"
+mysql -uroot -proot balancewise -e "SET @u=(SELECT id FROM user WHERE username='admin'); DELETE FROM transaction_record WHERE user_id=@u; DELETE FROM import_batch WHERE user_id=@u; DELETE FROM account WHERE user_id=@u; DELETE FROM category WHERE user_id=@u; DELETE FROM user WHERE id=@u;"
+mysql -uroot -proot balancewise -e "SELECT COUNT(*) AS leftover FROM user WHERE username='admin';"
 # 期望：leftover = 0（验收账号及其全部数据已清）
 ```
 
