@@ -2,6 +2,7 @@ package com.balancewise.importbill;
 
 import com.balancewise.importbill.parser.AlipayParser;
 import com.balancewise.importbill.parser.BillParseResult;
+import com.balancewise.importbill.parser.BillParserSupport;
 import com.balancewise.importbill.parser.ParsedRow;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.io.ClassPathResource;
@@ -21,7 +22,7 @@ class AlipayParserTest {
     void parsesValidRowsAndDropsFailedTransactions() throws Exception {
         byte[] content = Files.readAllBytes(
                 new ClassPathResource("fixtures/alipay-sample.csv").getFile().toPath());
-        BillParseResult result = parser.parse(content);
+        BillParseResult result = parser.parse(BillParserSupport.readCsv(content));
 
         // 5 行数据，交易关闭 1 行被丢弃
         assertEquals(4, result.getRows().size());
@@ -43,7 +44,7 @@ class AlipayParserTest {
     void quotedFieldWithCommaParsedAsSingleCell() throws Exception {
         byte[] content = Files.readAllBytes(
                 new ClassPathResource("fixtures/alipay-sample.csv").getFile().toPath());
-        ParsedRow quoted = parser.parse(content).getRows().stream()
+        ParsedRow quoted = parser.parse(BillParserSupport.readCsv(content)).getRows().stream()
                 .filter(r -> r.getItem() != null && r.getItem().contains("iPad"))
                 .findFirst().orElseThrow();
         assertEquals("iPad, 保护壳", quoted.getItem());
@@ -53,7 +54,7 @@ class AlipayParserTest {
     void typeRecognition() throws Exception {
         byte[] content = Files.readAllBytes(
                 new ClassPathResource("fixtures/alipay-sample.csv").getFile().toPath());
-        List<ParsedRow> rows = parser.parse(content).getRows();
+        List<ParsedRow> rows = parser.parse(BillParserSupport.readCsv(content)).getRows();
         // 交易付款→支出(expense)，退款→收入(income)，余额宝转入→转账(transfer)
         assertEquals("expense", rows.get(0).getType());
         assertEquals("income", rows.get(3).getType());

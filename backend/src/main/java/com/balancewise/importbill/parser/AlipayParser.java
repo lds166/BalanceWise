@@ -18,8 +18,8 @@ public class AlipayParser implements BillParser {
             "退款", "income",
             "余额宝转入", "transfer",
             "余额宝转出", "transfer",
-            "转账", "transfer",
             "花呗还款", "transfer");
+    // 注：「转账」给他人属于对外收支，按收/支方向归类，不作 transfer
 
     @Override
     public String platform() {
@@ -27,12 +27,11 @@ public class AlipayParser implements BillParser {
     }
 
     @Override
-    public BillParseResult parse(byte[] content) {
+    public BillParseResult parse(List<List<String>> rows) {
         BillParseResult result = new BillParseResult();
-        List<String> lines = BillParserSupport.lines(BillParserSupport.decode(content));
         int headerIdx = -1;
-        for (int i = 0; i < lines.size(); i++) {
-            if ("交易号".equals(BillParserSupport.splitCsvLine(lines.get(i)).get(0))) {
+        for (int i = 0; i < rows.size(); i++) {
+            if (!rows.get(i).isEmpty() && "交易号".equals(rows.get(i).get(0))) {
                 headerIdx = i;
                 break;
             }
@@ -41,14 +40,14 @@ public class AlipayParser implements BillParser {
             throw new com.balancewise.common.BizException("文件格式与所选平台不符：未找到支付宝表头");
         }
         Map<String, Integer> col = new HashMap<>();
-        List<String> headers = BillParserSupport.splitCsvLine(lines.get(headerIdx));
+        List<String> headers = rows.get(headerIdx);
         for (int i = 0; i < headers.size(); i++) {
             col.put(headers.get(i), i);
         }
         requireColumns(col, "交易号", "交易创建时间", "类型", "对方", "商品名称", "金额（元）", "收/支", "状态", "付款方式");
 
-        for (int i = headerIdx + 1; i < lines.size(); i++) {
-            List<String> cells = BillParserSupport.splitCsvLine(lines.get(i));
+        for (int i = headerIdx + 1; i < rows.size(); i++) {
+            List<String> cells = rows.get(i);
             int lineNo = i + 1;
             String status = cell(cells, col, "状态");
             if (!"交易成功".equals(status)) {

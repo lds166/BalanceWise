@@ -71,11 +71,28 @@ public class ImportService {
     }
 
     public ImportPreviewVo preview(Long userId, String platform, byte[] content, Long defaultAccountId) {
+        return preview(userId, platform, null, content, defaultAccountId);
+    }
+
+    /**
+     * 预览（不落库）。fileName 决定文件读取方式：.xlsx/.xls 走 Excel 读取（微信官方导出），
+     * 其余按 CSV（支付宝）；解析器只消费二维行，与文件格式解耦。
+     */
+    public ImportPreviewVo preview(Long userId, String platform, String fileName, byte[] content, Long defaultAccountId) {
         BillParser parser = parsers.get(platform);
         if (parser == null) {
             throw new BizException("不支持的平台：" + platform);
         }
-        BillParseResult parsed = parser.parse(content);
+        String name = fileName == null ? "" : fileName.toLowerCase();
+        List<List<String>> grid;
+        if (name.endsWith(".xlsx") || name.endsWith(".xls")) {
+            grid = com.balancewise.importbill.parser.BillParserSupport.readExcel(content);
+        } else if (name.endsWith(".csv") || name.isEmpty()) {
+            grid = com.balancewise.importbill.parser.BillParserSupport.readCsv(content);
+        } else {
+            throw new BizException("仅支持 CSV 或 XLSX 格式的账单文件");
+        }
+        BillParseResult parsed = parser.parse(grid);
         List<String> externalIds = parsed.getRows().stream()
                 .map(ParsedRow::getExternalId).filter(id -> id != null && !id.isBlank())
                 .collect(Collectors.toList());

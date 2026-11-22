@@ -18,10 +18,10 @@
               </el-select>
             </el-form-item>
             <el-form-item label="文件">
-              <el-upload ref="uploadRef" :auto-upload="false" :limit="1" accept=".csv"
+              <el-upload ref="uploadRef" :auto-upload="false" :limit="1" accept=".csv,.xlsx,.xls"
                          :on-exceed="onExceed" :on-change="onFileChange" :on-remove="onFileRemove">
-                <el-button>选择 CSV 文件</el-button>
-                <template #tip><span class="muted" style="margin-left: 10px">≤ 10 MB，支付宝/微信官方导出格式</span></template>
+                <el-button>选择账单文件</el-button>
+                <template #tip><span class="muted" style="margin-left: 10px">≤ 10 MB；支付宝导出 CSV / 微信导出 XLSX（微信压缩包需先解压再上传）</span></template>
               </el-upload>
             </el-form-item>
             <el-form-item>

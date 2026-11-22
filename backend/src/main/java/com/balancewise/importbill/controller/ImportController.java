@@ -32,7 +32,8 @@ public class ImportController {
                                            @RequestParam("file") MultipartFile file,
                                            @RequestParam(required = false) Long defaultAccountId)
             throws IOException {
-        ImportPreviewVo vo = importService.preview(userId, platform, file.getBytes(), defaultAccountId);
+        ImportPreviewVo vo = importService.preview(userId, platform, file.getOriginalFilename(),
+                file.getBytes(), defaultAccountId);
         vo.setFileName(file.getOriginalFilename());
         return Result.ok(vo);
     }

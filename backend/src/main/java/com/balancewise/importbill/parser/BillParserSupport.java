@@ -44,6 +44,55 @@ public final class BillParserSupport {
         return out;
     }
 
+    /** 字节内容 → 二维行（CSV：解码 + 逐行切分） */
+    public static List<List<String>> readCsv(byte[] content) {
+        List<List<String>> rows = new ArrayList<>();
+        for (String line : lines(decode(content))) {
+            rows.add(splitCsvLine(line));
+        }
+        return rows;
+    }
+
+    /** 字节内容 → 二维行（Excel：首张工作表，DataFormatter 取显示值），全空行跳过。
+     *  日期型单元格不依赖其显示格式，统一输出 yyyy-MM-dd HH:mm:ss（防官方改显示格式）。 */
+    public static List<List<String>> readExcel(byte[] content) {
+        List<List<String>> rows = new ArrayList<>();
+        org.apache.poi.ss.usermodel.DataFormatter formatter = new org.apache.poi.ss.usermodel.DataFormatter();
+        try (org.apache.poi.ss.usermodel.Workbook wb =
+                     org.apache.poi.ss.usermodel.WorkbookFactory.create(new java.io.ByteArrayInputStream(content))) {
+            org.apache.poi.ss.usermodel.Sheet sheet = wb.getSheetAt(0);
+            for (org.apache.poi.ss.usermodel.Row row : sheet) {
+                List<String> cells = new ArrayList<>();
+                boolean any = false;
+                for (int c = 0; c < row.getLastCellNum(); c++) {
+                    org.apache.poi.ss.usermodel.Cell cell = row.getCell(c, org.apache.poi.ss.usermodel.Row.MissingCellPolicy.RETURN_BLANK_AS_NULL);
+                    String v;
+                    if (cell == null) {
+                        v = "";
+                    } else if (cell.getCellType() == org.apache.poi.ss.usermodel.CellType.NUMERIC
+                            && org.apache.poi.ss.usermodel.DateUtil.isCellDateFormatted(cell)) {
+                        v = cell.getLocalDateTimeCellValue().format(DT);
+                    } else {
+                        v = formatter.formatCellValue(cell).trim();
+                    }
+                    if (!v.isEmpty()) {
+                        any = true;
+                    }
+                    cells.add(v);
+                }
+                if (any) {
+                    rows.add(cells);
+                }
+            }
+        } catch (java.io.IOException e) {
+            throw new com.balancewise.common.BizException("无法读取 Excel 文件：" + e.getMessage());
+        }
+        if (rows.isEmpty()) {
+            throw new com.balancewise.common.BizException("Excel 文件中没有数据行");
+        }
+        return rows;
+    }
+
     /** CSV 行切分：支持 "..." 包裹、内嵌逗号与 "" 转义引号 */
     public static List<String> splitCsvLine(String line) {
         List<String> cells = new ArrayList<>();

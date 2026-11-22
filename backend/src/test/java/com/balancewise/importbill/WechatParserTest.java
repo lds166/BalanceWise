@@ -1,6 +1,7 @@
 package com.balancewise.importbill;
 
 import com.balancewise.importbill.parser.BillParseResult;
+import com.balancewise.importbill.parser.BillParserSupport;
 import com.balancewise.importbill.parser.ParsedRow;
 import com.balancewise.importbill.parser.WechatParser;
 import org.junit.jupiter.api.Test;
@@ -21,7 +22,7 @@ class WechatParserTest {
     void parsesValidRowsAndStripsCurrencySymbol() throws Exception {
         byte[] content = Files.readAllBytes(
                 new ClassPathResource("fixtures/wechat-sample.csv").getFile().toPath());
-        BillParseResult result = parser.parse(content);
+        BillParseResult result = parser.parse(BillParserSupport.readCsv(content));
 
         assertEquals(3, result.getRows().size());
         assertEquals(1, result.getDropped().size());
@@ -37,11 +38,13 @@ class WechatParserTest {
     }
 
     @Test
-    void transferTypeRecognition() throws Exception {
+    void typeRecognitionDirectionVsOwnTransfer() throws Exception {
         byte[] content = Files.readAllBytes(
                 new ClassPathResource("fixtures/wechat-sample.csv").getFile().toPath());
-        List<ParsedRow> rows = parser.parse(content).getRows();
-        assertEquals("transfer", rows.get(1).getType()); // 转账收款 → transfer
-        assertEquals("transfer", rows.get(2).getType()); // 充值 → transfer
+        List<ParsedRow> rows = parser.parse(BillParserSupport.readCsv(content)).getRows();
+        // 微信用户间转账是对外收支：收款 → income（不是自有账户互转）
+        assertEquals("income", rows.get(1).getType());
+        // 零钱充值是自有账户互转（官方中性交易）→ transfer
+        assertEquals("transfer", rows.get(2).getType());
     }
 }
