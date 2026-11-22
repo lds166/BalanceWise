@@ -141,6 +141,8 @@ public class ImportService {
         vo.setPlatform(platform);
         vo.setRows(rows);
         vo.setDropped(parsed.getDropped());
+        // 第二道防线：官方汇总对账结果透传到预览页（一致→确认文案，不一致→告警）
+        vo.setNotice(parsed.getOfficialCheck());
         markDuplicateSuspects(userId, rows);
         applyAiClassification(userId, vo, rows);
         return vo;
@@ -156,11 +158,11 @@ public class ImportService {
         }
         if (pending.size() > aiClassifier.getMaxRows()) {
             pending = pending.subList(0, aiClassifier.getMaxRows());
-            vo.setNotice("待分类流水过多，AI 仅处理前 " + aiClassifier.getMaxRows() + " 条，其余请手动分类");
+            vo.setNotice(joinNotice(vo.getNotice(), "待分类流水过多，AI 仅处理前 " + aiClassifier.getMaxRows() + " 条，其余请手动分类"));
         }
         AiClassifier.AiOutcome outcome = aiClassifier.classifyForUser(userId, userCategories(userId), pending);
         if (outcome.error() != null) {
-            vo.setNotice("AI 分类暂不可用，本次已跳过，可稍后重试或手动分类");
+            vo.setNotice(joinNotice(vo.getNotice(), "AI 分类暂不可用，本次已跳过，可稍后重试或手动分类"));
             return;
         }
         for (ImportPreviewRow row : pending) {
@@ -170,6 +172,12 @@ public class ImportService {
                 row.setMatchSource("ai");
             }
         }
+    }
+
+    private String joinNotice(String a, String b) {
+        if (a == null || a.isBlank()) return b;
+        if (b == null || b.isBlank()) return a;
+        return a + "；" + b;
     }
 
     private List<Category> userCategories(Long userId) {

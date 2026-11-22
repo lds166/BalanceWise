@@ -29,6 +29,10 @@ class WechatParserXlsxTest {
 
     /** 按官方导出结构构造 xlsx：说明行若干 + 表头 + 数据行 */
     private byte[] buildOfficialXlsx() throws Exception {
+        return buildOfficialXlsx(true);
+    }
+
+    private byte[] buildOfficialXlsx(boolean withMatchingSummary) throws Exception {
         XSSFWorkbook wb = new XSSFWorkbook();
         var sheet = wb.createSheet("Sheet1");
         CellStyle dateStyle = wb.createCellStyle();
@@ -36,13 +40,19 @@ class WechatParserXlsxTest {
         CellStyle amountStyle = wb.createCellStyle();
         amountStyle.setDataFormat(wb.createDataFormat().getFormat("¥#,##0.00"));
 
-        // 说明文字（真实文件前 17 行均为说明）
-        for (int i = 0; i < 3; i++) {
-            sheet.createRow(i).createCell(0).setCellValue("微信支付账单明细说明" + i);
+        // 说明文字 + 官方汇总行（真实文件表头前自带，是解析对账的锚点）
+        int sumRow = 0;
+        for (String s : new String[]{"微信支付账单明细", "起始时间：[2026-11-01 00:00:00]", "导出时间：[2026-11-22 18:00:00]"}) {
+            sheet.createRow(sumRow++).createCell(0).setCellValue(s);
         }
+        String incomeSum = withMatchingSummary ? "收入：2笔 1916.00元" : "收入：3笔 1916.00元";
+        sheet.createRow(sumRow++).createCell(0).setCellValue("共8笔记录");
+        sheet.createRow(sumRow++).createCell(0).setCellValue(incomeSum);
+        sheet.createRow(sumRow++).createCell(0).setCellValue("支出：4笔 60.39元");
+        sheet.createRow(sumRow++).createCell(0).setCellValue("中性交易：2笔 25020.00元");
         // 表头（第 18 行位置语义上即第 4 行）
         String[] headers = {"交易时间", "交易类型", "交易对方", "商品", "收/支", "金额(元)", "支付方式", "当前状态", "交易单号", "商户单号", "备注"};
-        Row head = sheet.createRow(3);
+        Row head = sheet.createRow(sumRow++);
         for (int i = 0; i < headers.length; i++) {
             head.createCell(i).setCellValue(headers[i]);
         }
@@ -58,7 +68,7 @@ class WechatParserXlsxTest {
                 {LocalDateTime.of(2026, 11, 16, 8, 0, 0), "转账", "李四", "转账-退还", "收入", 66.00, "零钱", "对方已退还"},
                 {LocalDateTime.of(2026, 11, 15, 8, 0, 0), "商户消费", "某商户", "支付失败商品", "支出", 1.00, "零钱", "支付失败"},
         };
-        int rowIdx = 4;
+        int rowIdx = sumRow;
         for (Object[] d : data) {
             Row r = sheet.createRow(rowIdx++);
             Cell dateCell = r.createCell(0);
@@ -89,6 +99,18 @@ class WechatParserXlsxTest {
         assertEquals(2, result.getDropped().size());
         assertTrue(result.getDropped().stream().anyMatch(d -> d.contains("已全额退款")));
         assertTrue(result.getDropped().stream().anyMatch(d -> d.contains("支付失败")));
+        // 官方汇总对账：全量行毛额（含被丢弃行）与官方汇总一致 → 确认文案
+        assertNotNull(result.getOfficialCheck());
+        assertTrue(result.getOfficialCheck().contains("核对一致"));
+    }
+
+    @Test
+    void summaryMismatchWarnsLoudly() throws Exception {
+        BillParseResult result = parser.parse(BillParserSupport.readExcel(buildOfficialXlsx(false)));
+        // 汇总笔数对不上（官方收入 3 笔 vs 实际 2 笔）→ 预览页必须告警
+        assertNotNull(result.getOfficialCheck());
+        assertTrue(result.getOfficialCheck().contains("不一致"));
+        assertTrue(result.getOfficialCheck().contains("收入"));
     }
 
     @Test

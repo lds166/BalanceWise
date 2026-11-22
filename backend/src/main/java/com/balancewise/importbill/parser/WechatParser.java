@@ -63,6 +63,14 @@ public class WechatParser implements BillParser {
             throw new com.balancewise.common.BizException("文件格式与所选平台不符：缺少列「当前状态」");
         }
 
+        // 官方汇总对账（第二道防线）：xlsx 表头前的"收入：20笔 44100.21元"等汇总行是官方自算结果，
+        // 与全部数据行（含被丢弃的退款/失败行）按收/支方向的毛额累计比对——丢任何一行都会在这里现形
+        long[] official = extractOfficialSummary(rows, headerIdx);
+        java.util.concurrent.atomic.AtomicInteger grossIncomeCount = new java.util.concurrent.atomic.AtomicInteger();
+        java.util.concurrent.atomic.AtomicInteger grossExpenseCount = new java.util.concurrent.atomic.AtomicInteger();
+        java.util.concurrent.atomic.AtomicInteger grossTransferCount = new java.util.concurrent.atomic.AtomicInteger();
+        java.math.BigDecimal[] grossAmt = new java.math.BigDecimal[]{java.math.BigDecimal.ZERO, java.math.BigDecimal.ZERO, java.math.BigDecimal.ZERO};
+
         for (int i = headerIdx + 1; i < rows.size(); i++) {
             List<String> cells = rows.get(i);
             int lineNo = i + 1;
@@ -70,6 +78,12 @@ public class WechatParser implements BillParser {
             try {
                 ParsedRow row = buildRow(cells, col, lineNo);
                 String direction = cell(cells, col, "收/支");
+                // 毛额累计（含即将被丢弃的行）：对账基准是"账单里出现过的每一笔"
+                int bucket = "收入".equals(direction) ? 0 : "支出".equals(direction) ? 1 : 2;
+                grossAmt[bucket] = grossAmt[bucket].add(row.getAmount());
+                if (bucket == 0) grossIncomeCount.incrementAndGet();
+                else if (bucket == 1) grossExpenseCount.incrementAndGet();
+                else grossTransferCount.incrementAndGet();
 
                 // 1) 全额退款：钱出又全额回，净额 0，不入账（余额不受影响）
                 if (status.contains("已全额退款")) {
@@ -120,7 +134,52 @@ public class WechatParser implements BillParser {
                 result.getDropped().add("第" + lineNo + "行：解析失败（" + e.getMessage() + "）");
             }
         }
+        result.setOfficialCheck(reconcileOfficial(official,
+                new long[]{grossIncomeCount.get(), grossExpenseCount.get(), grossTransferCount.get()}, grossAmt));
         return result;
+    }
+
+    /** 提取表头前的官方汇总行（存在时），返回 [收入笔数, 收入额, 支出笔数, 支出额, 中性笔数, 中性额] 或 null */
+    private long[] extractOfficialSummary(List<List<String>> rows, int headerIdx) {
+        java.util.regex.Pattern p = java.util.regex.Pattern.compile("^(收入|支出|中性交易)：(\\d+)笔\\s*([\\d,]+\\.?\\d*)元");
+        for (int i = 0; i < headerIdx; i++) {
+            java.util.regex.Matcher m = p.matcher(rows.get(i).isEmpty() ? "" : rows.get(i).get(0));
+            if (m.matches()) {
+                long[] out = new long[6];
+                out[0] = Long.parseLong(m.group(2));
+                out[1] = new java.math.BigDecimal(m.group(3).replace(",", "")).movePointRight(2).longValue();
+                for (int j = i + 1; j < headerIdx; j++) {
+                    java.util.regex.Matcher mm = p.matcher(rows.get(j).isEmpty() ? "" : rows.get(j).get(0));
+                    if (!mm.matches()) continue;
+                    int idx = "收入".equals(mm.group(1)) ? 0 : "支出".equals(mm.group(1)) ? 2 : 4;
+                    out[idx] = Long.parseLong(mm.group(2));
+                    out[idx + 1] = new java.math.BigDecimal(mm.group(3).replace(",", "")).movePointRight(2).longValue();
+                }
+                return out;
+            }
+        }
+        return null;
+    }
+
+    /** 官方汇总 vs 全量行毛额逐项比对（金额以分为单位整数比较，避免浮点误差） */
+    private String reconcileOfficial(long[] official, long[] counts, java.math.BigDecimal[] grossAmt) {
+        if (official == null) {
+            return null;
+        }
+        String[] names = {"收入", "支出", "中性交易"};
+        java.util.List<String> bad = new java.util.ArrayList<>();
+        for (int i = 0; i < 3; i++) {
+            long parsedAmt = grossAmt[i].movePointRight(2).longValue();
+            if (counts[i] != official[i * 2] || parsedAmt != official[i * 2 + 1]) {
+                bad.add(names[i] + "解析 " + counts[i] + "笔/" + grossAmt[i] + "元 vs 官方 " + official[i * 2] + "笔/"
+                        + official[i * 2 + 1] / 100.0 + "元");
+            }
+        }
+        if (bad.isEmpty()) {
+            return "已与微信官方汇总核对一致（" + names[0] + " " + counts[0] + "笔、"
+                    + names[1] + " " + counts[1] + "笔、" + names[2] + " " + counts[2] + "笔），无漏行";
+        }
+        return "警告：解析结果与微信官方汇总不一致——" + String.join("；", bad) + "，请确认文件完整或联系排查";
     }
 
     private ParsedRow buildRow(List<String> cells, Map<String, Integer> col, int lineNo) {
