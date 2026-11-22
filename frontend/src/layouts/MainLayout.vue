@@ -63,7 +63,11 @@
     </header>
 
     <main class="content">
-      <router-view />
+      <router-view v-slot="{ Component }">
+        <transition name="bw-route" mode="out-in">
+          <component :is="Component" />
+        </transition>
+      </router-view>
     </main>
 
     <button
@@ -169,6 +173,12 @@ function onUserCommand(cmd) {
 }
 
 .content { padding-bottom: 96px; }
+
+/* 路由切换轻过渡：掩掉硬切的"闪一下"，保持敏捷（总时长 ~0.28s） */
+.bw-route-enter-active,
+.bw-route-leave-active { transition: opacity 0.14s ease, transform 0.14s ease; }
+.bw-route-enter-from { opacity: 0; transform: translateY(6px); }
+.bw-route-leave-to { opacity: 0; }
 
 /* 悬浮记账按钮 */
 .fab {

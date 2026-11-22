@@ -118,6 +118,9 @@
 /* ---------- 全局元素 ---------- */
 * { box-sizing: border-box; }
 
+/* 常驻滚动条槽位：长短页面切换（如首页→流水）时不再因滚动条出现/消失导致居中内容左右横跳 */
+html { scrollbar-gutter: stable; }
+
 html, body, #app {
   height: 100%;
   margin: 0;

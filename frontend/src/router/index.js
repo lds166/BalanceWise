@@ -20,7 +20,7 @@ const routes = [
   },
 ]
 
-const router = createRouter({ history: createWebHistory(), routes })
+const router = createRouter({ history: createWebHistory(), routes, scrollBehavior: () => ({ top: 0 }) })
 
 router.beforeEach(to => {
   const token = localStorage.getItem('bw_token')
