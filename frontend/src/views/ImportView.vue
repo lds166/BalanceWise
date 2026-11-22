@@ -44,7 +44,14 @@
           <el-empty v-if="!preview.rows.length && !preview.dropped.length"
                     description="该文件中没有识别到有效流水（请确认文件与所选平台一致）" :image-size="70" />
           <div v-if="preview.dropped.length" class="muted" style="margin-bottom: 8px">
-            丢弃：{{ droppedPreview }}<template v-if="preview.dropped.length > 3">；等共 {{ preview.dropped.length }} 条</template>
+            丢弃：{{ droppedPreview }}<template v-if="preview.dropped.length > 3">；等共 {{ preview.dropped.length }} 条
+              <el-button link type="primary" size="small" @click="showAllDropped = !showAllDropped">
+                {{ showAllDropped ? '收起' : '展开全部' }}
+              </el-button>
+            </template>
+            <div v-if="showAllDropped && preview.dropped.length > 3" class="dropped-all">
+              <div v-for="(d, i) in preview.dropped" :key="i">{{ d }}</div>
+            </div>
           </div>
           <el-alert v-if="preview.notice" :title="preview.notice" type="info" :closable="false"
                     style="margin-bottom: 8px" />
@@ -220,6 +227,7 @@ const form = reactive({ platform: 'alipay', defaultAccountId: null })
 const parsing = ref(false)
 const confirming = ref(false)
 const preview = reactive({ fileName: '', rows: [], dropped: [], notice: '', show: false })
+const showAllDropped = ref(false)
 const batches = ref([])
 const aliases = ref([])
 const remember = ref(true)
@@ -364,5 +372,7 @@ async function rollback(row) {
 .cat-cell { display: flex; align-items: center; gap: 4px; width: 100%; }
 .acc-cell { display: flex; gap: 6px; }
 .muted { color: var(--bw-text-secondary); font-size: 12px; }
+.dropped-all { max-height: 160px; overflow: auto; margin-top: 6px; padding: 6px 10px;
+               background: var(--bw-bg); border-radius: 8px; line-height: 1.8; }
 :deep(.missing-row) { background: var(--el-color-warning-light-9); }
 </style>
