@@ -1,5 +1,6 @@
 <template>
   <div class="bw-page">
+    <div class="bw-page-title">分类管理</div>
   <el-row :gutter="16">
     <el-col :span="12">
       <el-card>

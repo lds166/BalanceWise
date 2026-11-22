@@ -1,5 +1,6 @@
 <template>
   <div class="bw-page">
+    <div class="bw-page-title">账户管理</div>
     <el-row :gutter="16" style="margin-bottom: 16px">
       <el-col :span="8">
         <el-card><div class="stat"><span class="label">净资产</span>

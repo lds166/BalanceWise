@@ -1,5 +1,6 @@
 <template>
   <div class="bw-page">
+    <div class="bw-page-title">统计分析</div>
     <div class="bw-card" style="margin-bottom: 16px">
       <div class="filter-bar">
         <el-radio-group v-model="preset" @change="loadAll">

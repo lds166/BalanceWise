@@ -1,5 +1,6 @@
 <template>
   <div class="bw-page">
+    <div class="bw-page-title">个人中心</div>
     <el-row :gutter="16">
       <el-col :span="10">
         <el-card shadow="hover">

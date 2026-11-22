@@ -1,5 +1,7 @@
 <template>
   <div class="bw-page">
+    <div class="bw-page-title">账单导入</div>
+    <div class="page-sub">上传支付宝/微信官方导出的 CSV 账单，自动识别分类与账户，预览确认后入账</div>
     <el-tabs v-model="tab">
       <el-tab-pane label="导入账单" name="upload">
         <el-card style="max-width: 720px; margin-bottom: 16px">
